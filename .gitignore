@@ -1,0 +1,3 @@
+docker/
+output.srt
+whisper_live/__pycache__/

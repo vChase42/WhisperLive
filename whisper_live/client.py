@@ -33,6 +33,7 @@ class Client:
         log_transcription=True,
         max_clients=4,
         max_connection_time=600,
+        initial_prompt = ""
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -63,6 +64,7 @@ class Client:
         self.log_transcription = log_transcription
         self.max_clients = max_clients
         self.max_connection_time = max_connection_time
+        self.initial_prompt = initial_prompt
 
         if translate:
             self.task = "translate"
@@ -112,9 +114,9 @@ class Client:
         for i, seg in enumerate(segments):
             if not text or text[-1] != seg["text"]:
                 text.append(seg["text"])
-                if i == len(segments) - 1 and not seg["completed"]:
+                if i == len(segments) - 1:
                     self.last_segment = seg
-                elif (self.server_backend == "faster_whisper" and seg["completed"] and
+                elif (self.server_backend == "faster_whisper" and
                       (not self.transcript or
                         float(seg['start']) >= float(self.transcript[-1]['end']))):
                     self.transcript.append(seg)
@@ -125,9 +127,14 @@ class Client:
 
         if self.log_transcription:
             # Truncate to last 3 entries for brevity.
-            text = text[-3:]
+            # text = text[-3:]
             utils.clear_screen()
-            utils.print_transcript(text)
+            for x in text:
+                print(x)
+            # utils.print_transcript(text)
+            print(len(segments))
+
+
 
     def on_message(self, ws, message):
         """
@@ -206,6 +213,7 @@ class Client:
                     "use_vad": self.use_vad,
                     "max_clients": self.max_clients,
                     "max_connection_time": self.max_connection_time,
+                    "initial_prompt": self.initial_prompt
                 }
             )
         )
@@ -259,7 +267,7 @@ class Client:
 
         """
         if self.server_backend == "faster_whisper":
-            if (self.last_segment) and self.transcript[-1]["text"] != self.last_segment["text"]:
+            if (self.last_segment):
                 self.transcript.append(self.last_segment)
             utils.create_srt_file(self.transcript, output_path)
 
@@ -308,6 +316,7 @@ class TranscriptionTeeClient:
             print(f"[WARN]: Unable to access microphone. {error}")
             self.stream = None
 
+
     def __call__(self, audio=None, rtsp_url=None, hls_url=None, save_file=None):
         """
         Start the transcription process.
@@ -320,6 +329,8 @@ class TranscriptionTeeClient:
             audio (str, optional): Path to an audio file for transcription. Default is None, which triggers live recording.
 
         """
+        print("this is the __call__ method! how often is it getting called")
+
         assert sum(
             source is not None for source in [audio, rtsp_url, hls_url]
         ) <= 1, 'You must provide only one selected source'
@@ -340,6 +351,7 @@ class TranscriptionTeeClient:
         elif rtsp_url is not None:
             self.process_rtsp_stream(rtsp_url)
         else:
+            print("Recording now!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             self.record()
 
     def close_all_clients(self):
@@ -689,11 +701,12 @@ class TranscriptionClient(TranscriptionTeeClient):
         log_transcription=True,
         max_clients=4,
         max_connection_time=600,
+        initial_prompt=""
     ):
         self.client = Client(
             host, port, lang, translate, model, srt_file_path=output_transcription_path,
             use_vad=use_vad, log_transcription=log_transcription, max_clients=max_clients,
-            max_connection_time=max_connection_time
+            max_connection_time=max_connection_time, initial_prompt=initial_prompt
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):
