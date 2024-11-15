@@ -15,8 +15,7 @@ logging.basicConfig(level=logging.INFO)
 client = None
 
 
-
-transcribing = False
+close_server = False
 client_thread = None
 lock = threading.Lock()
 call_count = 0  # Counter to control write frequency
@@ -39,9 +38,9 @@ def innitiate_connection():
         max_connection_time=2000
         # output_recording_filename="./output_recording.wav",
     )
-    
     client_thread = threading.Thread(target=client, daemon=True)
     client_thread.start()
+
 
 def check_client_status(client):
     if client is None:
@@ -63,30 +62,16 @@ def check_client_status(client):
         else:
             return "Client is connected but not receiving data."
     
-    return "Client is not connected or recording."
+    return "Setting up..."
 
-
-def format_transcript_data(transcript_data):
-    formatted_text = []
-    for segment in transcript_data:
-        if segment is not None:
-            start_time = segment.get('start', '')
-            end_time = segment.get('end', '')
-            text = segment.get('text', '')
-            formatted_text.append(f"[{start_time} - {end_time}] {text}")
-        
-    
-    # Join all the formatted segments into a single string with line breaks
-    transcription_text = "\n".join(formatted_text)
-    return transcription_text
-    
     
 def transcribe_and_update(audio_data):
-    global transcribing, client_thread, call_count, client
+    global client_thread, call_count, client, close_server
 
-    if audio_data is not None and not transcribing:
-        transcribing = True
+    if close_server:
+        return "", "Server Closed, please turn off recording."
 
+    if audio_data is not None and client is None:
         innitiate_connection()
 
     call_count += 1
@@ -94,25 +79,12 @@ def transcribe_and_update(audio_data):
     text = retrieve_and_display_transcript()
     return text, check_client_status(client)
 
-def retrieve_and_display_transcript():
-    transcript_data = []
-    if client.client.transcript is not None:
-        transcript_data = list(client.client.transcript)
 
-
-    if client.client.last_segment is not None:
-        last_segment = dict(client.client.last_segment)
-        transcript_data.append(last_segment)
-    
-    
-    transcription_text = format_transcript_data(transcript_data)
-    return transcription_text
-
-
+#buttons
 def close_connection_button():
-    global transcribing, client_thread, client
+    global client_thread, client, close_server
+    close_server = True
     print('exit')
-    transcribing = False
     
     client.write_all_clients_srt()
     client.close_all_clients()
@@ -122,10 +94,37 @@ def close_connection_button():
 
 
 def start_connection_button():
-    global client
+    global client, close_server
+    close_server = False
     innitiate_connection()
     return check_client_status(client)
 
+#helper func
+def format_transcript_data(transcript_data):
+    formatted_text = []
+    for segment in transcript_data:
+        if segment is not None:
+            start_time = segment.get('start', '')
+            end_time = segment.get('end', '')
+            text = segment.get('text', '')
+            formatted_text.append(f"[{start_time} - {end_time}] {text}")
+        
+    # Join all the formatted segments into a single string with line breaks
+    transcription_text = "\n".join(formatted_text)
+    return transcription_text
+
+def retrieve_and_display_transcript():
+    transcript_data = []
+    if client.client.transcript is not None:
+        transcript_data = list(client.client.transcript)
+
+    if client.client.last_segment is not None:
+        last_segment = dict(client.client.last_segment)
+        transcript_data.append(last_segment)
+    
+    
+    transcription_text = format_transcript_data(transcript_data)
+    return transcription_text
 
 
 def ui():
