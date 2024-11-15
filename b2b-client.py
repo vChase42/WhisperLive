@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 # Initialize client
 client = None
 
-
+text = ""
 close_server = False
 client_thread = None
 lock = threading.Lock()
@@ -38,6 +38,7 @@ def innitiate_connection():
         max_connection_time=2000
         # output_recording_filename="./output_recording.wav",
     )
+
     client_thread = threading.Thread(target=client, daemon=True)
     client_thread.start()
 
@@ -66,10 +67,10 @@ def check_client_status(client):
 
     
 def transcribe_and_update(audio_data):
-    global client_thread, call_count, client, close_server
+    global call_count, client, close_server, text
 
     if close_server:
-        return "", "Server Closed, please turn off recording."
+        return text, "Server Closed, please turn off recording."
 
     if audio_data is not None and client is None:
         innitiate_connection()
@@ -82,7 +83,7 @@ def transcribe_and_update(audio_data):
 
 #buttons
 def close_connection_button():
-    global client_thread, client, close_server
+    global client, close_server
     close_server = True
     print('exit')
     
