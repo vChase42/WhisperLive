@@ -35,7 +35,7 @@ def innitiate_connection():
         save_output_recording=False,
         initial_prompt=" ".join(pre_prompt_words),
         max_clients=10,
-        max_connection_time=2000
+        max_connection_time=100000
         # output_recording_filename="./output_recording.wav",
     )
 
