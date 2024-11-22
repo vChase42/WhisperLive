@@ -1,6 +1,6 @@
 faster-whisper @ https://github.com/SYSTRAN/faster-whisper/archive/8f01aee36b562e6be537e0341cdd40dc8bed33a7.tar.gz
 websockets
-onnxruntime==1.16.0
+onnxruntime==1.17.0
 numba
 kaldialign
 soundfile

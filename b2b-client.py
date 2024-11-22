@@ -6,7 +6,6 @@ import threading
 import numpy as np
 import gradio as gr
 from whisper_live.client import TranscriptionClient
-import librosa
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
