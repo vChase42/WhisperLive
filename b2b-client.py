@@ -1,5 +1,7 @@
 import json
 import time
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, available_timezones
 import os
 import logging
 import threading
@@ -17,20 +19,23 @@ logging.basicConfig(level=logging.INFO)
 client = None
 
 language_map = {v: k for k, v in whisper.tokenizer.LANGUAGES.items()}  # Map full name to code
-isServerClosed = True
+
+isServerClosed = False
 client_thread = None
 lock = threading.Lock()
 call_count = 0  # Counter to control write frequency
 
-
+begin_timestamp = time.time()
 text_history = ""
 
 
 #client parameters
 params = {
     "pre_prompt": [],
-    "language": "en"
+    "language": "en",
+    "timezone": "America/Los_Angeles"
 }
+
 
 
 def apply_changes():
@@ -42,10 +47,11 @@ def apply_changes():
 
 def innitiate_connection():
     """Function to start the transcription client in a separate thread."""
-    global client_thread, client, params
+    global client_thread, client, params, begin_timestamp
 
     print(params['language'])
 
+    begin_timestamp = time.time()
     client = TranscriptionClient(
         host="localhost",
         port=9090,
@@ -108,7 +114,9 @@ def transcribe_and_update(audio_data):
 #buttons
 def close_connection_button():
     global client, isServerClosed
+    
     isServerClosed = True
+    if(client is None): return "Server Connection Closed"
     print('exit')
     
     client.write_all_clients_srt()
@@ -125,12 +133,25 @@ def start_connection_button():
     return check_client_status(client)
 
 #helper func
+def adjust_to_timezone(timestamp, preferred_timezone):
+    local_tz = ZoneInfo(preferred_timezone)
+    utc_time = datetime.fromtimestamp(timestamp, tz=timezone.utc)  # Use timezone-aware UTC
+    local_time = utc_time.astimezone(local_tz)
+    return local_time.strftime('%H:%M:%S')
+
 def format_transcript_data(transcript_data):
+    global begin_timestamp
+
     formatted_text = []
     for segment in transcript_data:
         if segment is not None:
-            start_time = segment.get('start', '')
-            end_time = segment.get('end', '')
+            start_time = begin_timestamp + float(segment.get('start', ''))
+            end_time = begin_timestamp + float(segment.get('end', ''))
+
+            # Adjust timestamps using local_params['timezone']
+            start_time = adjust_to_timezone(start_time, params['timezone'])
+            end_time = adjust_to_timezone(end_time, params['timezone'])
+
             text = segment.get('text', '')
             formatted_text.append(f"[{start_time} - {end_time}] {text}")
         
@@ -255,8 +276,10 @@ def ui():
 
         with gr.Accordion("Transcription Settings", open=False):
             languages = gr.Dropdown(label="Language",value="english", choices=list(language_map.keys()))
-            languages.change(lambda x: params.update({"language": language_map[x]}), languages, None)
+            timezones = gr.Dropdown(label="Timezone",value="America/Los_Angeles", choices=sorted(available_timezones()))
 
+            languages.change(lambda x: params.update({"language": language_map[x]}), languages, None)
+            timezones.change(lambda x: params.update({"timezone":x}), timezones, None)
 
             apply_button = gr.Button("Apply Settings")
             apply_button.click(fn=show_confirmation, outputs=confirmation_popup).then(
