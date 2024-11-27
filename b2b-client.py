@@ -219,7 +219,7 @@ def save_to_file():
 
 def ui():
     global params
-    with gr.Blocks() as demo:
+    with gr.Blocks(theme=gr.themes.Default()) as demo:
         #AUDIO & BIG TEXTBOX
         audio = gr.Audio(
             type="numpy",
@@ -273,12 +273,6 @@ def ui():
                         label="Click to remove pre-prompt word"
                     )
 
-                update_pre_prompt_button.click(
-                    fn=update_pre_prompt,
-                    inputs=pre_prompt_input,
-                    outputs=pre_prompt_word_buttons  # Outputs to the initialized Dataset component
-                ).then(
-                    lambda: gr.update(visible=True), None, confirmation_popup)
 
                 pre_prompt_word_buttons.click(
                     fn=remove_pre_prompt_word,
@@ -288,12 +282,8 @@ def ui():
 
         #CONFIRMATION POPUP BUTTONS
         with gr.Row(visible=False) as confirmation_popup:
-            confirmation_message = gr.Label(
-                value="This will reset your connection. Do you want to continue?",
-                elem_classes=["confirmation-label"]
-            )
-            yes_button = gr.Button("Yes", variant='secondary')
-            no_button = gr.Button("No")
+            yes_button = gr.Button("Reconnect to apply settings", variant="primary")
+            no_button = gr.Button("Cancel")
 
             def show_confirmation():
                 return gr.update(visible=True)
@@ -304,6 +294,12 @@ def ui():
             def cancel_reset():
                 return gr.update(visible=False)
             no_button.click(fn=cancel_reset, outputs=[confirmation_popup])
+            update_pre_prompt_button.click(
+                fn=update_pre_prompt,
+                inputs=pre_prompt_input,
+                outputs=pre_prompt_word_buttons  # updates word bubbles
+            ).then(
+                lambda: gr.update(visible=True), None, confirmation_popup)
 
         #TRANSCRIPTION ACCORDION
         with gr.Accordion("Transcription Settings", open=False):
