@@ -2,3 +2,4 @@ docker/
 output.srt
 whisper_live/__pycache__/
 /venv/
+/transcripts/

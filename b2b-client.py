@@ -29,7 +29,7 @@ begin_timestamp = time.time()
 text_history = ""
 
 
-#client parameters
+#default parameters
 params = {
     "pre_prompt": [],
     "language": "en",
@@ -49,7 +49,7 @@ def innitiate_connection():
     """Function to start the transcription client in a separate thread."""
     global client_thread, client, params, begin_timestamp
 
-    print(params['language'])
+    print("??????????????????")
 
     begin_timestamp = time.time()
     client = TranscriptionClient(
@@ -94,31 +94,30 @@ def check_client_status(client):
 
     
 def transcribe_and_update(audio_data):
-    global call_count, client, isServerClosed, text_history
-
-    display_text = text_history
-
+    global call_count, client, isServerClosed
 
     if isServerClosed:
-        return display_text, "Server Closed, please turn off recording."
+        return text_history, "Server Closed, please turn off recording."
 
     if audio_data is not None and client is None:
+        print("transcribe and update")
         innitiate_connection()
 
     call_count += 1
     # print(call_count)
-    display_text = retrieve_and_display_transcript()
+    display_text = text_history + retrieve_transcript()
     return display_text, check_client_status(client)
 
 
 #buttons
 def close_connection_button():
-    global client, isServerClosed
+    global client, isServerClosed, text_history
     
     isServerClosed = True
     if(client is None): return "Server Connection Closed"
-    print('exit')
     
+    text_history = text_history + retrieve_transcript() + "\n\n----DISCONNECT----\n\n"
+    print('exit')
     client.write_all_clients_srt()
     client.close_all_clients()
     
@@ -127,6 +126,7 @@ def close_connection_button():
 
 
 def start_connection_button():
+    print("start connection button")
     global client, isServerClosed
     isServerClosed = False
     innitiate_connection()
@@ -159,7 +159,8 @@ def format_transcript_data(transcript_data):
     transcription_text = "\n".join(formatted_text)
     return transcription_text
 
-def retrieve_and_display_transcript():
+def retrieve_transcript():
+    if client is None: return ""
     transcript_data = []
     if client.client.transcript is not None:
         transcript_data = list(client.client.transcript)
@@ -172,6 +173,25 @@ def retrieve_and_display_transcript():
     transcription_text = format_transcript_data(transcript_data)
     return transcription_text
 
+def save_transcript_to_file():
+    print("saving data to file")
+    global text_history, params
+
+    text_to_save = text_history + retrieve_transcript()
+    folder_name = "transcripts"
+    if not os.path.exists(folder_name):
+        os.makedirs(folder_name)
+    timezone_name = params.get('timezone', 'UTC')  # Default to UTC if no timezone provided
+    try:
+        tz = ZoneInfo(timezone_name)
+    except ValueError:
+        tz = ZoneInfo("UTC")  # Fallback to UTC if the timezone is invalid
+    current_time = datetime.now(tz)
+    file_name = current_time.strftime(f"B2B_%m_%d_%Y_%H_%M_%S.txt")
+    file_path = os.path.join(folder_name, file_name)
+    with open(file_path, 'w', encoding='utf-8') as file:
+        file.write(text_to_save)
+    print("data saved!")
 
 def ui():
     global params
@@ -186,7 +206,13 @@ def ui():
             label="Transcription",
             value=""
         )
-        gr.Markdown("<div style='text-align: left; font-size: small;'>Server</div>")
+        with gr.Row():
+            with gr.Column(scale=10):
+                gr.Markdown("Server", elem_id="small-text")
+            with gr.Column(scale=1):
+                save_file_button = gr.Button(value="Save Text To File", elem_id="tiny-button")
+                save_file_button.click(fn=save_transcript_to_file,outputs=None)
+
         with gr.Row():
             start_button = gr.Button("Connect To Server")
             stop_button = gr.Button("Disconnect From Server")
@@ -232,7 +258,10 @@ def ui():
                 json.dump(params["pre_prompt"], file)
         
 
-        gr.Markdown("<div style='text-align: left; font-size: small;'>Options</div>")
+        with gr.Row():
+            with gr.Column(scale=10):  # Adjust scale for proportion
+                gr.Markdown("Options", elem_id="small-text")
+
         with gr.Row():
             with gr.Column(scale=1, min_width=600):
                 # Initialize Dataset component to show pre-prompt words
@@ -307,7 +336,21 @@ def ui():
             outputs=pre_prompt_word_buttons
         )
 
-
+        demo.css = """
+        #small-text {
+            font-size: small;
+            margin: 0;
+            padding: 0;
+            text-align: left;
+        }
+        #tiny-button {
+            font-size: 17px;  /* Smaller font */
+            height: 30px;     /* Reduce button height */
+            padding: 0px 0px; /* Smaller padding */
+            width: 160px;  /* Optional: Reduce width */
+            margin-left: auto;     /* Align to the right */
+        }
+        """
         return demo
 
 if __name__ == "__main__":    

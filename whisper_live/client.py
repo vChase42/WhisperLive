@@ -331,8 +331,6 @@ class TranscriptionTeeClient:
             audio (str, optional): Path to an audio file for transcription. Default is None, which triggers live recording.
 
         """
-        print("this is the __call__ method! how often is it getting called")
-
         assert sum(
             source is not None for source in [audio, rtsp_url, hls_url]
         ) <= 1, 'You must provide only one selected source'
