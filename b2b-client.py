@@ -122,6 +122,7 @@ def close_connection_button():
     client.close_all_clients()
     
     del client
+    client = None
     return "Server Connection Closed"
 
 
@@ -160,6 +161,7 @@ def format_transcript_data(transcript_data):
     return transcription_text
 
 def retrieve_transcript():
+    global client
     if client is None: return ""
     transcript_data = []
     if client.client.transcript is not None:
@@ -190,6 +192,8 @@ def save_transcript_to_file():
     file_name = current_time.strftime(f"B2B_%m_%d_%Y_%H_%M_%S.txt")
     file_path = os.path.join(folder_name, file_name)
     with open(file_path, 'w', encoding='utf-8') as file:
+        file.write("Selected Timezone: " + timezone_name + "\n")
+        file.write("-----BEGIN-----\n")
         file.write(text_to_save)
     print("data saved!")
 # PRE PROMPT FUNCS
@@ -198,10 +202,8 @@ def update_pre_prompt(words):
 
     new_words = [w.strip() for w in words.split(',') if w.strip()]
     params["pre_prompt"] = list(set(params["pre_prompt"] + new_words))
-    # print("DOING THE NEW WORDS",params["pre_prompt"])
 
     updated_samples = [[word] for word in params["pre_prompt"]]
-    # print("j", updated_samples)
     return gr.update(samples=updated_samples)
 
 def remove_pre_prompt_word(word):
