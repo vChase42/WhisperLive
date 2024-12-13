@@ -1,0 +1,30 @@
+#small-label h2{
+    height: 18px;
+    padding: 0px 0px;
+    margin: 0;
+    font-size: 16px;
+    margin-left: auto;
+}
+#small-label > label {
+    display: none; /* Hide the Gradio default title */
+}
+
+#small-text {
+    font-size: small;
+    margin: 0;
+    padding: 0;
+    text-align: left;
+}
+#tiny-button {
+    font-size: 17px;  /* Smaller font */
+    height: 30px;     /* Reduce button height */
+    padding: 0px 0px; /* Smaller padding */
+    width: 160px;  /* Optional: Reduce width */
+    margin-left: auto;     /* Align to the right */
+}
+
+#fixed-height-textbox textarea {
+    height: 300px !important; /* Set a fixed height */
+    resize: none;             /* Disable resizing */
+    overflow-y: auto;         /* Add a scrollbar if content overflows */
+}
