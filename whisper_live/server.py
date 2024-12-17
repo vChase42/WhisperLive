@@ -18,6 +18,8 @@ try:
 except Exception:
     pass
 
+from embedding_processing import AudioEmbeddingGenerator
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -265,6 +267,13 @@ class TranscriptionServer:
                 client.set_eos(False)
             if self.use_vad and not voice_active:
                 return True
+
+        # -------------------------------------------------------------------------
+        #ADD EMBEDDING CODE HERE 
+        # -------------------------------------------------------------------------
+        #this is the smallest chunk that was just added actually, so it is not a real segment of speach. this is not a great place to put it
+
+        
 
         client.add_frames(frame_np)
         return True
@@ -749,6 +758,8 @@ class ServeClientTensorRT(ServeClientBase):
                 input_sample = input_bytes.copy()
                 logging.info(f"[WhisperTensorRT:] Processing audio with duration: {duration}")
                 self.transcribe_audio(input_sample)
+
+            #add speaker embeddings here, or inside transcribe audio?
 
             except Exception as e:
                 logging.error(f"[ERROR]: {e}")

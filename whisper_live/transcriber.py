@@ -651,6 +651,9 @@ class WhisperModel:
 
         return config
 
+
+
+    #this is the function where i need to add my embeddings code i think... welp. shit.
     def transcribe(
         self,
         audio: Union[str, BinaryIO, torch.Tensor, np.ndarray],
@@ -789,9 +792,9 @@ class WhisperModel:
         duration = audio.shape[0] / sampling_rate
         duration_after_vad = duration
 
-        self.logger.info(
-            "Processing audio with duration %s", format_timestamp(duration)
-        )
+        # self.logger.info(
+        #     "Processing audio with duration %s", format_timestamp(duration)
+        # )
 
         if vad_filter and clip_timestamps == "0":
             if vad_parameters is None:
@@ -803,10 +806,10 @@ class WhisperModel:
             audio = torch.cat(audio_chunks, dim=0)
             duration_after_vad = audio.shape[0] / sampling_rate
 
-            self.logger.info(
-                "VAD filter removed %s of audio",
-                format_timestamp(duration - duration_after_vad),
-            )
+            # self.logger.info(
+            #     "VAD filter removed %s of audio",
+            #     format_timestamp(duration - duration_after_vad),
+            # )
 
             if self.logger.isEnabledFor(logging.DEBUG):
                 self.logger.debug(
