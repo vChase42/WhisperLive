@@ -87,7 +87,7 @@ client = TranscriptionClient(
   9090,
   lang="en",
   translate=False,
-  model="small",
+  model="small",                                      # also support hf_model => `Systran/faster-whisper-small`
   use_vad=False,
   save_output_recording=True,                         # Only used for microphone input, False by Default
   output_recording_filename="./output_recording.wav", # Only used for microphone input
@@ -133,12 +133,16 @@ client(hls_url="http://as-hls-ww-live.akamaized.net/pool_904/live/ww/bbc_1xtra/b
   docker run -p 9090:9090 --runtime=nvidia --gpus all --entrypoint /bin/bash -it ghcr.io/collabora/whisperlive-tensorrt
 
   # Build small.en engine
-  bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en
+  bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en        # float16
+  bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en int8   # int8 weight only quantization
+  bash build_whisper_tensorrt.sh /app/TensorRT-LLM-examples small.en int4   # int4 weight only quantization
 
   # Run server with small.en
   python3 run_server.py --port 9090 \
                         --backend tensorrt \
-                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en"
+                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_float16"
+                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_int8"
+                        --trt_model_path "/app/TensorRT-LLM-examples/whisper/whisper_small_en_int4"
   ```
 
 - CPU
