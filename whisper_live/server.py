@@ -18,7 +18,7 @@ try:
 except Exception:
     pass
 
-from embedding_processing import AudioEmbeddingGenerator
+from whisper_live.embedding_processing import AudioEmbeddingGenerator
 
 logging.basicConfig(level=logging.INFO)
 
@@ -800,6 +800,9 @@ class ServeClientFasterWhisper(ServeClientBase):
             self.model_size_or_path = self.check_valid_model(model)
         else:
             self.model_size_or_path = model
+
+        self.embeddings_generator = AudioEmbeddingGenerator()
+
         self.language = "en" if self.model_size_or_path.endswith("en") else language
         self.task = task
         self.initial_prompt = initial_prompt
@@ -1011,6 +1014,12 @@ class ServeClientFasterWhisper(ServeClientBase):
                     time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue
                 self.handle_transcription_output(result, duration)
+
+                try:
+                    my_embedding = self.embeddings_generator.enter(input_bytes.copy(), duration)
+                except Exception as e:
+                    print("EMBEDDINGS DEBUG:",e)
+
 
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")

@@ -3,3 +3,5 @@ output.srt
 whisper_live/__pycache__/
 /venv/
 /transcripts/
+.env
+some_warnings

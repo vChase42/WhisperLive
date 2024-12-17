@@ -1,59 +1,76 @@
 import numpy as np
 import torch
 import torchaudio
-from pyannote.audio import Model
-from pyannote.core import Segment
+from pyannote.audio import Model, Inference
+
+from dotenv import load_dotenv
+import os
+load_dotenv()
+hf_key = os.getenv('HF_KEY')
 
 class AudioEmbeddingGenerator:
     def __init__(self):
         # Load the speaker embedding model
-        self.model = Model.from_pretrained("pyannote/embedding")
 
-    def convertWavToEmbedding(self, audio_array, sample_rate, start_time, end_time):
+        # pipeline = Pipeline.from_pretrained(
+        # "pyannote/speaker-diarization-3.1",
+        # use_auth_token=hf_key)
+        self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=hf_key)
+        self.inference = Inference(self.model, window="whole")
+
+    def convertWavToEmbedding(self, audio_array, sample_rate, duration_seconds):
         """
-        Convert a segment of a waveform to speaker embedding.
+        Convert the first segment of an in-memory waveform to a speaker embedding.
 
         Parameters:
         - audio_array: numpy array of audio samples
         - sample_rate: int, sample rate of the audio
-        - start_time: float, start time in seconds
-        - end_time: float, end time in seconds
+        - duration_seconds: float, duration of the segment in seconds
 
         Returns:
         - embedding_array: numpy array, speaker embedding vector
         """
-        # Ensure audio is in torch tensor format
-        audio_tensor = torch.from_numpy(audio_array).float()
+        # Ensure audio is a torch.Tensor
+        if isinstance(audio_array, np.ndarray):
+            audio_tensor = torch.from_numpy(audio_array).float()
+        elif torch.is_tensor(audio_array):
+            audio_tensor = audio_array.float()
+        else:
+            raise ValueError("audio_array must be a numpy array or a torch tensor")
 
         # Resample to 16kHz if necessary
         if sample_rate != 16000:
             audio_tensor = torchaudio.functional.resample(audio_tensor, orig_freq=sample_rate, new_freq=16000)
             sample_rate = 16000
 
-        # Extract the segment
-        start_sample = int(start_time * sample_rate)
-        end_sample = int(end_time * sample_rate)
-        segment_audio_tensor = audio_tensor[start_sample:end_sample]
+        # Extract the first segment
+        end_sample = int(duration_seconds * sample_rate)
+        segment_audio_tensor = audio_tensor[:end_sample]
 
-        # Compute the speaker embedding
-        embedding = self.model({"waveform": segment_audio_tensor.unsqueeze(0), "sample_rate": sample_rate})
+        # Run inference directly on the tensor
+        embedding = self.inference({"waveform": segment_audio_tensor.unsqueeze(0), "sample_rate": sample_rate})
 
-        # Convert embedding to numpy array
-        embedding_array = embedding.cpu().detach().numpy()
+        return embedding
 
-        return embedding_array
+    def enter(self, audio_array, duration_seconds):
+        """
+        Process audio data to extract a speaker embedding from the first duration_seconds.
+        Infers the sample rate from audio_array and duration_seconds.
 
-    def enter(self, audio_array, sample_rate):
-
-        # Define test start and end times for a segment
-        start_time = 2.0  # Example: Start at 2 seconds
-        end_time = 6.0    # Example: End at 6 seconds
-
+        Parameters:
+        - audio_array: numpy array of audio samples
+        - duration_seconds: float, duration of the segment in seconds
+        """
+        # Infer sample rate
+        sample_rate = int(len(audio_array) / duration_seconds)
+        
         # Call the convertWavToEmbedding function
-        embedding = self.convertWavToEmbedding(audio_array, sample_rate, start_time, end_time)
+        embedding = self.convertWavToEmbedding(audio_array, sample_rate, duration_seconds)
 
         # Print the resulting embedding
         print("Speaker Embedding:", embedding)
+
+        return embedding
 
 
 
