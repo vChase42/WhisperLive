@@ -5,3 +5,4 @@ whisper_live/__pycache__/
 /transcripts/
 .env
 some_warnings
+/embeddings/

@@ -32,7 +32,7 @@ client_thread = None
 lock = threading.Lock()
 call_count = 0  # Counter to control write frequency
 
-begin_timestamp = time.time()
+begin_timestamp = None #time.time() object
 text_history = ""
 
 
@@ -64,7 +64,7 @@ def innitiate_connection():
             model="turbo",
             use_vad=True,
             log_transcription=False,
-            save_output_recording=False,
+            save_output_recording=True,
             initial_prompt=" ".join(params["pre_prompt"]),
             max_clients=10,
             max_connection_time=100000,
