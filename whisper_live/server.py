@@ -1016,7 +1016,12 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.handle_transcription_output(result, duration)
 
                 try:
-                    my_embedding = self.embeddings_generator.enter(input_bytes.copy(), duration)
+                    if(duration > 3):
+                        sample_rate = int(input_bytes.size / duration)
+
+                        waveform = self.embeddings_generator.prepare_waveform(input_bytes.copy(),sample_rate)
+                        my_embedding = self.embeddings_generator.enter(waveform)
+
                 except Exception as e:
                     print("EMBEDDINGS DEBUG:",e)
 

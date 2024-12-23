@@ -118,19 +118,17 @@ class AudioEmbeddingGenerator:
         return embeddings
 
 
-    def enter(self, audio_array):
-        """
-        Process audio data to extract a speaker embedding from the first duration_seconds.
-        Infers the sample rate from audio_array and duration_seconds.
+    def enter(self, audio_array, save = False):
 
-        Parameters:
-        - audio_array: numpy array of audio samples
-        - duration_seconds: float, duration of the segment in seconds
-        """
+        
+
         embedding = self.diarize_and_extract_embeddings(audio_array)
 
         #adding embeddings to file
-        # addEmbeddingToFile(embedding,"./embeddings/embedding1.txt")
+        if(save):
+            for e in embedding:
+                addEmbeddingToFile(e,"./embeddings/embedding1.txt")
+
 
         return embedding
 
@@ -152,6 +150,30 @@ class AudioEmbeddingGenerator:
         embedding = self.diarize_and_extract_embeddings(waveform, sample_rate)
 
         return embedding
+    
+    def prepare_waveform(self, waveform_np, sample_rate, target_sample_rate=16000):
+        """
+        Prepare a waveform dictionary with PyTorch tensor and resample to 16 kHz if needed.
+
+        Parameters:
+            waveform_np (numpy.ndarray): The input waveform as a NumPy array.
+            sample_rate (int): The original sample rate of the waveform.
+            target_sample_rate (int): The target sample rate (default is 16 kHz).
+
+        Returns:
+            dict: Dictionary with keys 'waveform' (torch.Tensor) and 'sample_rate' (int).
+        """
+        print("1")
+        # Convert NumPy array to PyTorch tensor
+        waveform_tensor = torch.tensor(waveform_np, dtype=torch.float32).unsqueeze(0)  # Add batch dimension
+        print("2")
+        if sample_rate != target_sample_rate:
+            print("2.2")
+            # Resample the waveform to the target sample rate
+            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
+            waveform_tensor = resampler(waveform_tensor)
+            print("3")
+        return {"waveform": waveform_tensor, "sample_rate": target_sample_rate}
 
 # Example usage (for testing purposes)
 if __name__ == "__main__":

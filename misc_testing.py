@@ -1,14 +1,14 @@
+import argparse
 from whisper_live.embedding_processing import AudioEmbeddingGenerator, addEmbeddingToFile
 from pydub import AudioSegment
 import numpy as np
 import torch
 import torchaudio
+import os
 
 generator = AudioEmbeddingGenerator()
 
-
-
-def split_audio(file_path, chunk_duration_ms=2000):
+def split_audio(file_path, chunk_duration_ms=3000):
     """
     Split an audio file into chunks and return a list of dictionaries,
     each containing a PyTorch tensor ('waveform') and its sample rate ('sample_rate').
@@ -25,10 +25,9 @@ def split_audio(file_path, chunk_duration_ms=2000):
     
     for idx, chunk in enumerate(chunks):
         # Save the chunk as a .wav file
-        chunk_path = f"./tmp/{file_path.split('/')[-1]}_{idx}.wav"
+        chunk_path = f"./tmp/{os.path.basename(file_path)}_{idx}.wav"
         chunk.export(chunk_path, format="wav")
         print(f"Chunk saved: {chunk_path}")
-
 
     target_sample_rate = 16000
     chunk_dicts = []
@@ -50,34 +49,41 @@ def split_audio(file_path, chunk_duration_ms=2000):
 
     return chunk_dicts
 
-
-
 if __name__ == "__main__":
-    print("getting file and splitting it into n parts and then generating embeddings for all of them into text file")
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description="Process audio file and generate embeddings.")
+    parser.add_argument("-f", "--file", required=True, help="Path to the audio file")
+    parser.add_argument("-d", "--duration", type=int, default=3000, help="Chunk duration in milliseconds (default: 3000ms)")
+    args = parser.parse_args()
 
-    fileName = "../AUDIO SAMPLES/rachel.mp3"
+    file_path = args.file
+    chunk_duration = args.duration
 
-    #add file
-    
-    chunk_duration = 3000
-    chunks = split_audio(fileName, chunk_duration)
+    # Extract file name without extension for output file
+    base_name = os.path.splitext(os.path.basename(file_path))[0]
+    output_file = f"./embeddings/{base_name}.txt"
 
+    print(f"Splitting {file_path} into chunks and generating embeddings into {output_file}")
+
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+
+    # Split audio into chunks
+    chunks = split_audio(file_path, chunk_duration)
 
     count = 0
     embeddings = []
     for chunk in chunks:
         try:
-            print("Processing chunk:",count)
+            print("Processing chunk:", count)
             count += 1
             new_embeddings = generator.enter(chunk)
-            print("Num new embeddings:",len(new_embeddings))
+            print("Num new embeddings:", len(new_embeddings))
 
             embeddings.extend(new_embeddings)
         except Exception as e:
-            print(e)
+            print(f"Error processing chunk {count}: {e}")
     
     for e in embeddings:
-        addEmbeddingToFile(e,"./embeddings/rachel.txt")
-    print("done")
-
-    
+        addEmbeddingToFile(e, output_file)
+    print("Done")
