@@ -1017,10 +1017,13 @@ class ServeClientFasterWhisper(ServeClientBase):
 
                 try:
                     if(duration > 3):
+                        print("Segment duration:",duration)
+                        start_time = time.time()
                         sample_rate = int(input_bytes.size / duration)
 
                         waveform = self.embeddings_generator.prepare_waveform(input_bytes.copy(),sample_rate)
-                        my_embedding = self.embeddings_generator.enter(waveform)
+                        my_embedding = self.embeddings_generator.enter(waveform, True)
+                        print("finished generating embeddings, time taken:", time.time() - start_time)
 
                 except Exception as e:
                     print("EMBEDDINGS DEBUG:",e)

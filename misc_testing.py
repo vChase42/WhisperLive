@@ -40,7 +40,7 @@ def split_audio(file_path, chunk_duration_ms=3000):
         original_sample_rate = chunk.frame_rate
 
         if original_sample_rate != target_sample_rate:
-            print("welp, resampling")
+            print("welp, resampling, orig rate:",original_sample_rate)
             # Resample the chunk to 16 kHz
             resampler = torchaudio.transforms.Resample(orig_freq=original_sample_rate, new_freq=target_sample_rate)
             chunk_tensor = resampler(chunk_tensor)

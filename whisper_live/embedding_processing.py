@@ -69,12 +69,15 @@ def addEmbeddingToFile(embedding, fileName):
 class AudioEmbeddingGenerator:
     def __init__(self):
         # Load the speaker embedding model
+        if not torch.cuda.is_available():
+            print("-------------------------------")
+            print("WARNING: CUDA is not available!")
+            print("-------------------------------")
 
-        # pipeline = Pipeline.from_pretrained(
-        # "pyannote/speaker-diarization-3.1",
-        # use_auth_token=hf_key)
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=hf_key)
-        self.embedding_model = Model.from_pretrained("pyannote/embedding", use_auth_token=hf_key)
+        self.diarization_pipeline.to(device)
+        self.embedding_model = Model.from_pretrained("pyannote/embedding", use_auth_token=hf_key,device="cuda")
         self.inference = Inference(self.embedding_model, window="whole")
 
     def diarize_and_extract_embeddings(self, audio_tensor):
@@ -117,17 +120,19 @@ class AudioEmbeddingGenerator:
 
         return embeddings
 
+    def getEmbedding(self, waveform):
+        return self.inference(waveform)
 
-    def enter(self, audio_array, save = False):
+    def enter(self, waveform, save = False):
 
         
-
-        embedding = self.diarize_and_extract_embeddings(audio_array)
+        embedding = [self.getEmbedding(waveform)]
+        # embedding = self.diarize_and_extract_embeddings(waveform)
 
         #adding embeddings to file
         if(save):
             for e in embedding:
-                addEmbeddingToFile(e,"./embeddings/embedding1.txt")
+                addEmbeddingToFile(e,"./embeddings/embedding2.txt")
 
 
         return embedding
@@ -163,16 +168,12 @@ class AudioEmbeddingGenerator:
         Returns:
             dict: Dictionary with keys 'waveform' (torch.Tensor) and 'sample_rate' (int).
         """
-        print("1")
         # Convert NumPy array to PyTorch tensor
         waveform_tensor = torch.tensor(waveform_np, dtype=torch.float32).unsqueeze(0)  # Add batch dimension
-        print("2")
         if sample_rate != target_sample_rate:
-            print("2.2")
             # Resample the waveform to the target sample rate
             resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
             waveform_tensor = resampler(waveform_tensor)
-            print("3")
         return {"waveform": waveform_tensor, "sample_rate": target_sample_rate}
 
 # Example usage (for testing purposes)
