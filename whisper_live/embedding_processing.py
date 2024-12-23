@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torchaudio
-from pyannote.audio import Model, Inference
+from pyannote.audio import Model, Pipeline, Inference
 
 from dotenv import load_dotenv
 import os
@@ -13,6 +13,7 @@ hf_key = os.getenv('HF_KEY')
 import atexit
 # Global variable to hold the open file object
 global_file = None
+global_count = 0
 
 def ensure_folder_exists(folder_path):
     """Ensure that the specified folder exists."""
@@ -72,44 +73,52 @@ class AudioEmbeddingGenerator:
         # pipeline = Pipeline.from_pretrained(
         # "pyannote/speaker-diarization-3.1",
         # use_auth_token=hf_key)
-        self.model = Model.from_pretrained("pyannote/embedding", use_auth_token=hf_key)
-        self.inference = Inference(self.model, window="whole")
+        self.diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=hf_key)
+        self.embedding_model = Model.from_pretrained("pyannote/embedding", use_auth_token=hf_key)
+        self.inference = Inference(self.embedding_model, window="whole")
 
-    def convertWavToEmbedding(self, audio_array, sample_rate, duration_seconds):
+    def diarize_and_extract_embeddings(self, audio_tensor):
         """
-        Convert the first segment of an in-memory waveform to a speaker embedding.
+        Diarize audio and return a list of embeddings for each speaker segment.
 
         Parameters:
-        - audio_array: numpy array of audio samples
-        - sample_rate: int, sample rate of the audio
-        - duration_seconds: float, duration of the segment in seconds
+            diarization_pipeline: Pyannote diarization pipeline instance.
+            embedding_model: Pyannote speaker embedding model instance.
+            audio_array (numpy.ndarray): Audio data as a waveform array.
+            sample_rate (int): Sample rate of the audio.
 
         Returns:
-        - embedding_array: numpy array, speaker embedding vector
+            List[numpy.ndarray]: A list of embeddings for each diarized segment.
         """
-        # Ensure audio is a torch.Tensor
-        if isinstance(audio_array, np.ndarray):
-            audio_tensor = torch.from_numpy(audio_array).float()
-        elif torch.is_tensor(audio_array):
-            audio_tensor = audio_array.float()
-        else:
-            raise ValueError("audio_array must be a numpy array or a torch tensor")
+        # Perform diarization
+        # print("begin diarization")
 
-        # Resample to 16kHz if necessary
-        if sample_rate != 16000:
-            audio_tensor = torchaudio.functional.resample(audio_tensor, orig_freq=sample_rate, new_freq=16000)
-            sample_rate = 16000
+        diarization = self.diarization_pipeline(audio_tensor)
+        # print("finish diarization")
 
-        # Extract the first segment
-        end_sample = int(duration_seconds * sample_rate)
-        segment_audio_tensor = audio_tensor[:end_sample]
+        embeddings = []
+        
+        # Extract embeddings for each diarized segment
+        for segment, _, _ in diarization.itertracks(yield_label=True):
+            start_sample = int(segment.start * audio_tensor['sample_rate'])
+            end_sample = int(segment.end * audio_tensor['sample_rate'])
+            segment_waveform = audio_tensor['waveform'][:, start_sample:end_sample]
 
-        # Run inference directly on the tensor
-        embedding = self.inference({"waveform": segment_audio_tensor.unsqueeze(0), "sample_rate": sample_rate})
+            global global_count
+            output_path = f"./tmp/aaa_{global_count}.wav"
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            global_count += 1
 
-        return embedding
+            torchaudio.save(output_path, segment_waveform, audio_tensor['sample_rate'])
+            # Generate embedding for the segment
+            embedding = self.inference({"waveform": segment_waveform, "sample_rate": audio_tensor['sample_rate']})
 
-    def enter(self, audio_array, duration_seconds):
+            embeddings.append(embedding)
+
+        return embeddings
+
+
+    def enter(self, audio_array):
         """
         Process audio data to extract a speaker embedding from the first duration_seconds.
         Infers the sample rate from audio_array and duration_seconds.
@@ -118,15 +127,10 @@ class AudioEmbeddingGenerator:
         - audio_array: numpy array of audio samples
         - duration_seconds: float, duration of the segment in seconds
         """
-        # Infer sample rate
-        sample_rate = int(len(audio_array) / duration_seconds)
-        
-        # Call the convertWavToEmbedding function
-        embedding = self.convertWavToEmbedding(audio_array, sample_rate, duration_seconds)
+        embedding = self.diarize_and_extract_embeddings(audio_array)
 
-        # Print the resulting embedding
-        # print("Speaker Embedding:", embedding)
-        addEmbeddingToFile(embedding,"./embeddings/embedding1.txt")
+        #adding embeddings to file
+        # addEmbeddingToFile(embedding,"./embeddings/embedding1.txt")
 
         return embedding
 
@@ -143,10 +147,9 @@ class AudioEmbeddingGenerator:
         # Load audio file
         waveform, sample_rate = torchaudio.load(file_path)
         waveform = waveform.mean(dim=0)  # Convert to mono if stereo
-        duration_seconds = waveform.shape[0] / sample_rate
 
         # Convert to embedding
-        embedding = self.convertWavToEmbedding(waveform, sample_rate, duration_seconds)
+        embedding = self.diarize_and_extract_embeddings(waveform, sample_rate)
 
         return embedding
 
