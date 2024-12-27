@@ -77,13 +77,11 @@ if __name__ == "__main__":
         try:
             print("Processing chunk:", count)
             count += 1
-            new_embeddings = generator.enter(chunk)
+            new_embeddings = generator.enter(chunk,output_file)
             print("Num new embeddings:", len(new_embeddings))
 
             embeddings.extend(new_embeddings)
         except Exception as e:
             print(f"Error processing chunk {count}: {e}")
     
-    for e in embeddings:
-        addEmbeddingToFile(e, output_file)
     print("Done")

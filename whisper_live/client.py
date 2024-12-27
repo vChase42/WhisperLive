@@ -351,7 +351,6 @@ class TranscriptionTeeClient:
         elif rtsp_url is not None:
             self.process_rtsp_stream(rtsp_url)
         else:
-            print("Recording now!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
             self.record()
 
     def close_all_clients(self):

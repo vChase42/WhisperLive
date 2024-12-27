@@ -268,13 +268,6 @@ class TranscriptionServer:
             if self.use_vad and not voice_active:
                 return True
 
-        # -------------------------------------------------------------------------
-        #ADD EMBEDDING CODE HERE 
-        # -------------------------------------------------------------------------
-        #this is the smallest chunk that was just added actually, so it is not a real segment of speach. this is not a great place to put it
-
-        
-
         client.add_frames(frame_np)
         return True
 
@@ -502,6 +495,8 @@ class ServeClientBase(object):
                 - input_bytes (np.ndarray): The next chunk of audio data to be processed.
                 - duration (float): The duration of the audio chunk in seconds.
         """
+        # print(f"t: {self.timestamp_offset} - f: {self.frames_offset} = d: {self.timestamp_offset - self.frames_offset}")
+
         samples_take = max(0, (self.timestamp_offset - self.frames_offset) * self.RATE)
         input_bytes = self.frames_np[int(samples_take):].copy()
         duration = input_bytes.shape[0] / self.RATE
@@ -1022,7 +1017,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                         sample_rate = int(input_bytes.size / duration)
 
                         waveform = self.embeddings_generator.prepare_waveform(input_bytes.copy(),sample_rate)
-                        my_embedding = self.embeddings_generator.enter(waveform, True)
+                        my_embedding = self.embeddings_generator.enter(waveform, "./embeddings/embedding3.txt")
                         print("finished generating embeddings, time taken:", time.time() - start_time)
 
                 except Exception as e:

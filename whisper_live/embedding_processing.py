@@ -123,16 +123,16 @@ class AudioEmbeddingGenerator:
     def getEmbedding(self, waveform):
         return self.inference(waveform)
 
-    def enter(self, waveform, save = False):
+    def enter(self, waveform, fileName = ""):
 
         
         embedding = [self.getEmbedding(waveform)]
         # embedding = self.diarize_and_extract_embeddings(waveform)
 
         #adding embeddings to file
-        if(save):
+        if(fileName != ""):
             for e in embedding:
-                addEmbeddingToFile(e,"./embeddings/embedding2.txt")
+                addEmbeddingToFile(e,fileName)
 
 
         return embedding

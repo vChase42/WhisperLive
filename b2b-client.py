@@ -27,6 +27,7 @@ client = None
 
 language_map = {v: k for k, v in whisper.tokenizer.LANGUAGES.items()}  # Map full name to code
 
+awaiting_connection = False
 isClientConnected = False
 client_thread = None
 lock = threading.Lock()
@@ -49,14 +50,13 @@ params = {
 
 #client connection management functions
 def innitiate_connection():
-    global client_thread, client, params, begin_timestamp, isClientConnected
+    global client_thread, client, params, isClientConnected
 
     if(isClientConnected):
         print("Client already running")
         return
 
     try:
-        begin_timestamp = time.time()
         client = TranscriptionClient(
             host="localhost",
             port=9090,
@@ -68,7 +68,7 @@ def innitiate_connection():
             initial_prompt=" ".join(params["pre_prompt"]),
             max_clients=10,
             max_connection_time=100000,
-            output_recording_filename=f"./transcripts/B2B_{get_MMDDYYYYHHMMSS_time(begin_timestamp)}.wav"
+            output_recording_filename=f"./transcripts/B2B_{get_MMDDYYYYHHMMSS_time(time.time())}.wav"
         )
 
         client_thread = threading.Thread(target=client, daemon=True)
@@ -100,7 +100,10 @@ def reset_connection():
     close_connection()
     innitiate_connection()
 
+
+
 def check_client_status(client):
+    global awaiting_connection, begin_timestamp
     if client is None:
         return "No server connection initiated."
     
@@ -115,11 +118,16 @@ def check_client_status(client):
         return "Waiting for the server to be ready."
 
     if my_client.recording:
+        if awaiting_connection:
+            awaiting_connection = False
+            begin_timestamp = time.time()
+
         if my_client.last_response_received and (time.time() - my_client.last_response_received < 15):
             return "Client is connected and actively receiving data."
         else:
             return "Client is connected but not receiving data."
     
+    awaiting_connection = True
     return "Setting up..."
 
     
@@ -138,7 +146,10 @@ def transcribe_and_update(audio_data):
     display_text = text_history + retrieve_transcript()
 
     if(call_count % 5 == 0):
-        save_transcript_to_file(params['text_output'], display_text)
+        if begin_timestamp == None:
+            save_transcript_to_file(params['text_output'], display_text,time.time())
+        else:
+            save_transcript_to_file(params['text_output'], display_text, begin_timestamp)
 
 
     return display_text, check_client_status(client)
@@ -158,9 +169,7 @@ def start_connection_button():
 
 #helper func
 
-def format_transcript_data(transcript_data):
-    global begin_timestamp
-
+def format_transcript_data(transcript_data, begin_timestamp):
     formatted_text = []
     for segment in transcript_data:
         if segment is not None:
@@ -179,7 +188,7 @@ def format_transcript_data(transcript_data):
     return transcription_text
 
 def retrieve_transcript():
-    global client
+    global client, begin_timestamp
     if client is None: return ""
     transcript_data = []
     if client.client.transcript is not None:
@@ -190,7 +199,10 @@ def retrieve_transcript():
         transcript_data.append(last_segment)
     
 
-    transcription_text = format_transcript_data(transcript_data)
+    if(begin_timestamp == None):
+        transcription_text = format_transcript_data(transcript_data, time.time())
+    else:
+        transcription_text = format_transcript_data(transcript_data, begin_timestamp)
     return transcription_text
 
 #time
@@ -205,7 +217,7 @@ def get_MMDDYYYYHHMMSS_time(timestamp):
     local_time = utc_time.astimezone(local_tz)
     return local_time.strftime("%m_%d_%Y_%H_%M_%S")
 
-def save_transcript_to_file(pre_file_name, text_to_save):
+def save_transcript_to_file(pre_file_name, text_to_save, timestamp):
     global text_history, params
 
     folder_name = os.path.dirname(pre_file_name)
@@ -213,7 +225,7 @@ def save_transcript_to_file(pre_file_name, text_to_save):
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
 
-    current_time = get_MMDDYYYYHHMMSS_time(begin_timestamp)
+    current_time = get_MMDDYYYYHHMMSS_time(timestamp)
     file_name = pre_file_name.replace("{time}", current_time)
 
     with open(file_name, 'w', encoding='utf-8') as file:
