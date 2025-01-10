@@ -6,5 +6,6 @@ whisper_live/__pycache__/
 .env
 some_warnings
 /embeddings/*.txt
+/embeddings/__pycache__/
 /tmp/
 /chunks/

@@ -80,45 +80,45 @@ class AudioEmbeddingGenerator:
         self.embedding_model = Model.from_pretrained("pyannote/embedding", use_auth_token=hf_key,device="cuda")
         self.inference = Inference(self.embedding_model, window="whole")
 
-    def diarize_and_extract_embeddings(self, audio_tensor):
-        """
-        Diarize audio and return a list of embeddings for each speaker segment.
+    # def diarize_and_extract_embeddings(self, audio_tensor):
+    #     """
+    #     Diarize audio and return a list of embeddings for each speaker segment.
 
-        Parameters:
-            diarization_pipeline: Pyannote diarization pipeline instance.
-            embedding_model: Pyannote speaker embedding model instance.
-            audio_array (numpy.ndarray): Audio data as a waveform array.
-            sample_rate (int): Sample rate of the audio.
+    #     Parameters:
+    #         diarization_pipeline: Pyannote diarization pipeline instance.
+    #         embedding_model: Pyannote speaker embedding model instance.
+    #         audio_array (numpy.ndarray): Audio data as a waveform array.
+    #         sample_rate (int): Sample rate of the audio.
 
-        Returns:
-            List[numpy.ndarray]: A list of embeddings for each diarized segment.
-        """
-        # Perform diarization
-        # print("begin diarization")
+    #     Returns:
+    #         List[numpy.ndarray]: A list of embeddings for each diarized segment.
+    #     """
+    #     # Perform diarization
+    #     # print("begin diarization")
 
-        diarization = self.diarization_pipeline(audio_tensor)
-        # print("finish diarization")
+    #     diarization = self.diarization_pipeline(audio_tensor)
+    #     # print("finish diarization")
 
-        embeddings = []
+    #     embeddings = []
         
-        # Extract embeddings for each diarized segment
-        for segment, _, _ in diarization.itertracks(yield_label=True):
-            start_sample = int(segment.start * audio_tensor['sample_rate'])
-            end_sample = int(segment.end * audio_tensor['sample_rate'])
-            segment_waveform = audio_tensor['waveform'][:, start_sample:end_sample]
+    #     # Extract embeddings for each diarized segment
+    #     for segment, _, _ in diarization.itertracks(yield_label=True):
+    #         start_sample = int(segment.start * audio_tensor['sample_rate'])
+    #         end_sample = int(segment.end * audio_tensor['sample_rate'])
+    #         segment_waveform = audio_tensor['waveform'][:, start_sample:end_sample]
 
-            global global_count
-            output_path = f"./tmp/aaa_{global_count}.wav"
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            global_count += 1
+    #         global global_count
+    #         output_path = f"./tmp/aaa_{global_count}.wav"
+    #         os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    #         global_count += 1
 
-            torchaudio.save(output_path, segment_waveform, audio_tensor['sample_rate'])
-            # Generate embedding for the segment
-            embedding = self.inference({"waveform": segment_waveform, "sample_rate": audio_tensor['sample_rate']})
+    #         torchaudio.save(output_path, segment_waveform, audio_tensor['sample_rate'])
+    #         # Generate embedding for the segment
+    #         embedding = self.inference({"waveform": segment_waveform, "sample_rate": audio_tensor['sample_rate']})
 
-            embeddings.append(embedding)
+    #         embeddings.append(embedding)
 
-        return embeddings
+    #     return embeddings
 
     def getEmbedding(self, waveform):
         return self.inference(waveform)
@@ -171,9 +171,12 @@ class AudioEmbeddingGenerator:
         # Convert NumPy array to PyTorch tensor
         waveform_tensor = torch.tensor(waveform_np, dtype=torch.float32).unsqueeze(0)  # Add batch dimension
         if sample_rate != target_sample_rate:
+            
             # Resample the waveform to the target sample rate
-            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)
+            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)       #I HAVE LEARNED THAT RESAMPLING IS RLY BAD
             waveform_tensor = resampler(waveform_tensor)
+
+
         return {"waveform": waveform_tensor, "sample_rate": target_sample_rate}
 
 # Example usage (for testing purposes)

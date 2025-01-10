@@ -181,7 +181,9 @@ def format_transcript_data(transcript_data, begin_timestamp):
             end_time = get_HHMMSS_time(end_time)
 
             text = segment.get('text', '')
-            formatted_text.append(f"[{start_time} - {end_time}] {text}")
+            speaker = segment.get('speaker',-2)
+            print("Speaker ID:",speaker)
+            formatted_text.append(f"({speaker})[{start_time} - {end_time}] {text}")
         
     # Join all the formatted segments into a single string with line breaks
     transcription_text = "\n".join(formatted_text)

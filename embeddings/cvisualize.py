@@ -1,7 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.manifold import TSNE
-from cluster_embeddings import SpeakerEmbeddingClassifierWithClustering
+import os
+import sys
+
+current_dir = os.path.dirname(os.path.abspath(__file__))
+neighbor_folder_path = os.path.abspath(os.path.join(current_dir, "../"))
+sys.path.insert(0, neighbor_folder_path)
+
+from whisper_live.cluster_embeddings import SpeakerEmbeddingClassifierWithClustering
+
+import time
 
 
 class AudioEmbeddingVisualizerWithHover:
@@ -113,21 +122,26 @@ def load_embeddings_with_clustering(file_paths):
     - list of file labels for each embedding.
     - list of file names.
     """
-    classifier = SpeakerEmbeddingClassifierWithClustering(similarity_threshold=.75,clustering_eps=.5)
+    classifier = SpeakerEmbeddingClassifierWithClustering(similarity_threshold=0.6, clustering_eps=0.4)
     all_embeddings = []
-    speaker_ids = []
     file_labels = []
     file_names = [file_path for file_path in file_paths]  # Preserve file names
+
+    # Load embeddings from files
     for file_idx, file_path in enumerate(file_paths):
         with open(file_path, "r") as f:
             for line in f:
                 embedding = list(map(float, line.strip().split()))
                 embedding = np.array(embedding)
                 all_embeddings.append(embedding)
-                speaker_id = classifier.add_and_classify_embedding(embedding)
-                speaker_ids.append(speaker_id)
                 file_labels.append(file_idx)  # Assign a unique label for each file
-    return np.array(all_embeddings), speaker_ids, file_labels, file_names
+    start_time = time.time()
+
+    classifier.bulk_add_embeddings(all_embeddings)
+    speaker_ids = classifier.get_classifications()
+    all_embeddings = np.array(all_embeddings)
+    print(f"Time taken to cluster all {len(all_embeddings)} embeddings is {time.time() - start_time}")
+    return all_embeddings, speaker_ids, file_labels, file_names
 
 
 if __name__ == "__main__":

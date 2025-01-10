@@ -19,6 +19,7 @@ except Exception:
     pass
 
 from whisper_live.embedding_processing import AudioEmbeddingGenerator
+from whisper_live.cluster_embeddings import SpeakerEmbeddingClassifierWithClustering
 
 logging.basicConfig(level=logging.INFO)
 
@@ -754,8 +755,6 @@ class ServeClientTensorRT(ServeClientBase):
                 logging.info(f"[WhisperTensorRT:] Processing audio with duration: {duration}")
                 self.transcribe_audio(input_sample)
 
-            #add speaker embeddings here, or inside transcribe audio?
-
             except Exception as e:
                 logging.error(f"[ERROR]: {e}")
 
@@ -797,6 +796,7 @@ class ServeClientFasterWhisper(ServeClientBase):
             self.model_size_or_path = model
 
         self.embeddings_generator = AudioEmbeddingGenerator()
+        self.embeddings_clusterer = SpeakerEmbeddingClassifierWithClustering(similarity_threshold=0.80, clustering_eps=0.5)
 
         self.language = "en" if self.model_size_or_path.endswith("en") else language
         self.task = task
@@ -949,7 +949,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.text.append('')
         return segments
 
-    def handle_transcription_output(self, result, duration):
+    def handle_transcription_output(self, result, duration, speaker_id):
         """
         Handle the transcription output, updating the transcript and sending data to the client.
 
@@ -960,7 +960,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         segments = []
         if len(result):
             self.t_start = None
-            last_segment = self.update_segments(result, duration)
+            last_segment = self.update_segments(result, duration, speaker_id)
             segments = self.prepare_segments(last_segment)
         else:
             # show previous output if there is pause i.e. no output from whisper
@@ -1008,27 +1008,44 @@ class ServeClientFasterWhisper(ServeClientBase):
                     self.timestamp_offset += duration
                     time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue
-                self.handle_transcription_output(result, duration)
 
+                #--------------------------------
+                #MY EMBEDDING CODE
+                #--------------------------------
+                speaker_id = -3
                 try:
                     if(duration > 3):
+                        #somehow get a count
+                        #if count % 100 == 0:
+                        #   self.embeddings_clusterer._recluster_embeddings()
+                        
+                        
+                        
                         print("Segment duration:",duration)
-                        start_time = time.time()
                         sample_rate = int(input_bytes.size / duration)
 
+                        start_time = time.time()
                         waveform = self.embeddings_generator.prepare_waveform(input_bytes.copy(),sample_rate)
-                        my_embedding = self.embeddings_generator.enter(waveform, "./embeddings/embedding3.txt")
-                        print("finished generating embeddings, time taken:", time.time() - start_time)
+                        print("finished preparing audio, time taken:", time.time() - start_time)
+                        my_embedding = self.embeddings_generator.enter(waveform, "./embeddings/embedding4.txt")[0]   #make the title a timestamp determined by on-connection-start
+
+                        start_time = time.time()
+                        speaker_id = self.embeddings_clusterer.add_and_classify_embedding(my_embedding)
+                        print("Finished classifying embedding, time taken:", time.time() - start_time)
+
 
                 except Exception as e:
                     print("EMBEDDINGS DEBUG:",e)
-
-
+                #--------------------------------
+                #END EMBEDDING CODE
+                #--------------------------------
+                
+                self.handle_transcription_output(result, duration, speaker_id)    #if duration is < 3, then speaker_id is undeclared
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 time.sleep(0.01)
 
-    def format_segment(self, start, end, text, completed=False):
+    def format_segment(self, start, end, text, speaker, completed=False):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -1046,10 +1063,11 @@ class ServeClientFasterWhisper(ServeClientBase):
             'start': "{:.3f}".format(start),
             'end': "{:.3f}".format(end),
             'text': text,
+            'speaker': speaker,
             'completed': completed
         }
 
-    def update_segments(self, segments, duration):
+    def update_segments(self, segments, duration, speaker_id):
         """
         Processes the segments from whisper. Appends all the segments to the list
         except for the last segment assuming that it is incomplete.
@@ -1086,7 +1104,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 if s.no_speech_prob > self.no_speech_thresh:
                     continue
 
-                self.transcript.append(self.format_segment(start, end, text_, completed=True))
+                self.transcript.append(self.format_segment(start, end, text_, -11, completed=True))   #speaker
                 offset = min(duration, s.end)
 
         # only process the last segment if it satisfies the no_speech_thresh
@@ -1096,6 +1114,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.timestamp_offset + segments[-1].start,
                 self.timestamp_offset + min(duration, segments[-1].end),
                 self.current_out,
+                speaker_id,  #speaker
                 completed=False
             )
 
@@ -1114,6 +1133,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                     self.timestamp_offset,
                     self.timestamp_offset + duration,
                     self.current_out,
+                    speaker_id,                     #speaker
                     completed=True
                 ))
             self.current_out = ''
