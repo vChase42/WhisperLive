@@ -34,7 +34,7 @@ params = {
     "pre_prompt": [],
     "language": "en",
     "timezone": "America/Los_Angeles",
-    "text_output": "./transcripts/B2B_{time}.txt"
+    "text_output": "./transcripts/"
 }
 
 
@@ -213,16 +213,14 @@ def get_MMDDYYYYHHMMSS_time(timestamp):
     local_time = utc_time.astimezone(local_tz)
     return local_time.strftime("%m_%d_%Y_%H_%M_%S")
 
-def save_transcript_to_file(pre_file_name, text_to_save, timestamp):
+def save_transcript_to_file(folder_name, text_to_save, timestamp):
     global text_history, params
-
-    folder_name = os.path.dirname(pre_file_name)
 
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
 
     current_time = get_MMDDYYYYHHMMSS_time(timestamp)
-    file_name = pre_file_name.replace("{time}", current_time)
+    file_name = f"{folder_name}\\B2B_{current_time}.txt" 
 
     with open(file_name, 'w', encoding='utf-8') as file:
         file.write("Selected Timezone: " + params.get('timezone', 'UTC') + "\n")
@@ -349,11 +347,11 @@ def ui():
         with gr.Accordion("Transcription Settings", open=False):
             languages = gr.Dropdown(label="Language",value="english", choices=list(language_map.keys()))
             timezones = gr.Dropdown(label="Timezone",value="America/Los_Angeles", choices=sorted(available_timezones()))
-            file_output_box = gr.Textbox(label="File Output Path", value=params['text_output'])
+            folder_output_box = gr.Textbox(label="Folder Output Path", value=params['text_output'])
 
             languages.change(lambda x: params.update({"language": language_map[x]}), languages, None)
             timezones.change(lambda x: params.update({"timezone":x}), timezones, None)
-            file_output_box.change(lambda x: params.update({"text_output":x}), file_output_box, None)
+            folder_output_box.change(lambda x: params.update({"text_output":x}), folder_output_box, None)
 
             apply_button = gr.Button("Apply Settings")
             apply_button.click(fn=show_confirmation, outputs=confirmation_popup).then(
