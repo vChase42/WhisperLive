@@ -11,6 +11,8 @@ import torch
 import numpy as np
 from websockets.sync.server import serve
 from websockets.exceptions import ConnectionClosed
+from whisper_live.cluster_embeddings import SpeakerEmbeddingClassifierWithClustering
+from whisper_live.embedding_processing import AudioEmbeddingGenerator
 from whisper_live.vad import VoiceActivityDetector
 from whisper_live.transcriber import WhisperModel
 try:
@@ -801,6 +803,10 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.no_speech_thresh = 0.45
         self.same_output_threshold = 10
 
+        self.embeddings_generator = AudioEmbeddingGenerator()
+        self.embeddings_clusterer = SpeakerEmbeddingClassifierWithClustering(similarity_threshold=0.80, clustering_eps=0.5)
+
+
         device = "cuda" if torch.cuda.is_available() else "cpu"
         if device == "cuda":
             major, _ = torch.cuda.get_device_capability(device)
@@ -1015,6 +1021,37 @@ class ServeClientFasterWhisper(ServeClientBase):
                     time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue
                 self.handle_transcription_output(result, duration)
+
+                #--------------------------------
+                #MY EMBEDDING CODE
+                #--------------------------------
+                speaker_id = -3
+                try:
+                    if(duration > 3):
+                        #somehow get a count
+                        #if count % 100 == 0:
+                        #   self.embeddings_clusterer._recluster_embeddings()
+                        
+                        
+                        
+                        print("Segment duration:",duration)
+                        sample_rate = int(input_bytes.size / duration)
+
+                        start_time = time.time()
+                        waveform = self.embeddings_generator.prepare_waveform(input_bytes.copy(),sample_rate)
+                        print("finished preparing audio, time taken:", time.time() - start_time)
+                        my_embedding = self.embeddings_generator.enter(waveform, "./embeddings/embedding4.txt")[0]   #make the title a timestamp determined by on-connection-start
+
+                        start_time = time.time()
+                        speaker_id = self.embeddings_clusterer.add_and_classify_embedding(my_embedding)
+                        print("Finished classifying embedding, time taken:", time.time() - start_time)
+
+
+                except Exception as e:
+                    print("EMBEDDINGS DEBUG:",e)
+                #--------------------------------
+                #END EMBEDDING CODE
+                #--------------------------------
 
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
