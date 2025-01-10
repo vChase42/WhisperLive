@@ -1,2 +1,6 @@
 venv/
 docker/OS (C).lnk
+whisper_live/__pycache__/
+/transcripts/
+/chunks/
+output.srt
