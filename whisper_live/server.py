@@ -527,8 +527,11 @@ class ServeClientBase(object):
             segments = self.transcript[-self.send_last_n_segments:].copy()
         else:
             segments = self.transcript.copy()
+
         if last_segment is not None:
             segments = segments + [last_segment]
+        for x in segments:
+            print('      ',x['text'])
         return segments
 
     def get_audio_chunk_duration(self, input_bytes):
@@ -553,6 +556,8 @@ class ServeClientBase(object):
         Returns:
             segments (list): A list of transcription segments to be sent to the client.
         """
+
+
         try:
             self.websocket.send(
                 json.dumps({
@@ -1020,7 +1025,6 @@ class ServeClientFasterWhisper(ServeClientBase):
                     self.timestamp_offset += duration
                     time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue
-                self.handle_transcription_output(result, duration)
 
                 #--------------------------------
                 #MY EMBEDDING CODE
@@ -1034,18 +1038,17 @@ class ServeClientFasterWhisper(ServeClientBase):
                         
                         
                         
-                        print("Segment duration:",duration)
+                        # print("Segment duration:",duration)
                         sample_rate = int(input_bytes.size / duration)
 
                         start_time = time.time()
                         waveform = self.embeddings_generator.prepare_waveform(input_bytes.copy(),sample_rate)
-                        print("finished preparing audio, time taken:", time.time() - start_time)
+                        # print("finished preparing audio, time taken:", time.time() - start_time)
                         my_embedding = self.embeddings_generator.enter(waveform, "./embeddings/embedding4.txt")[0]   #make the title a timestamp determined by on-connection-start
 
                         start_time = time.time()
                         speaker_id = self.embeddings_clusterer.add_and_classify_embedding(my_embedding)
-                        print("Finished classifying embedding, time taken:", time.time() - start_time)
-
+                        # print("Finished classifying embedding, time taken:", time.time() - start_time)
 
                 except Exception as e:
                     print("EMBEDDINGS DEBUG:",e)
@@ -1053,11 +1056,16 @@ class ServeClientFasterWhisper(ServeClientBase):
                 #END EMBEDDING CODE
                 #--------------------------------
 
+
+                # if len(result) > 1:
+                #     print(result)
+                self.handle_transcription_output(result, duration)
+
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 time.sleep(0.01)
 
-    def format_segment(self, start, end, text, completed=False):
+    def format_segment(self, start, end, text, completed, audio_bytes = None, speaker = None):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -1075,7 +1083,9 @@ class ServeClientFasterWhisper(ServeClientBase):
             'start': "{:.3f}".format(start),
             'end': "{:.3f}".format(end),
             'text': text,
-            'completed': completed
+            'completed': completed,
+            'audio_bytes': audio_bytes,
+            'speaker':speaker
         }
 
     def update_segments(self, segments, duration):
@@ -1100,7 +1110,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                      Returns None if there are no valid segments to process.
         """
         offset = None
-        self.current_out = ''
+        self.last_text_out = ''
         last_segment = None
 
         # process complete segments
@@ -1121,16 +1131,18 @@ class ServeClientFasterWhisper(ServeClientBase):
 
         # only process the last segment if it satisfies the no_speech_thresh
         if segments[-1].no_speech_prob <= self.no_speech_thresh:
-            self.current_out += segments[-1].text
+            self.last_text_out += segments[-1].text
             with self.lock:
                 last_segment = self.format_segment(
                     self.timestamp_offset + segments[-1].start,
                     self.timestamp_offset + min(duration, segments[-1].end),
-                    self.current_out,
-                    completed=False
+                    self.last_text_out,
+                    False,
+                    # audio_bytes,
+                    # speaker
                 )
 
-        if self.current_out.strip() == self.prev_out.strip() and self.current_out != '':
+        if self.last_text_out.strip() == self.prev_out.strip() and self.last_text_out != '':
             self.same_output_count += 1
             time.sleep(0.1)     # wait for some voice activity just in case there is an unitended pause from the speaker for better punctuations.
         else:
@@ -1138,22 +1150,27 @@ class ServeClientFasterWhisper(ServeClientBase):
         
         # if same incomplete segment is seen multiple times then update the offset
         # and append the segment to the list
+
+        print("same outut for the latest segment:",self.same_output_count)
         if self.same_output_count > self.same_output_threshold:
-            if not len(self.text) or self.text[-1].strip().lower() != self.current_out.strip().lower():
-                self.text.append(self.current_out)
+            # print(self.transcript)
+            if not len(self.text) or self.text[-1].strip().lower() != self.last_text_out.strip().lower():
+                self.text.append(self.last_text_out)
                 with self.lock:
                     self.transcript.append(self.format_segment(
                         self.timestamp_offset,
                         self.timestamp_offset + duration,
-                        self.current_out,
-                        completed=True
+                        self.last_text_out,
+                        True,
+                        # audio_bytes,
+                        # speaker
                     ))
-            self.current_out = ''
+            self.last_text_out = ''
             offset = duration
             self.same_output_count = 0
             last_segment = None
         else:
-            self.prev_out = self.current_out
+            self.prev_out = self.last_text_out
 
         # update offset
         if offset is not None:

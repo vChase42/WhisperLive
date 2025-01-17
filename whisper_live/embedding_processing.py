@@ -1,3 +1,4 @@
+import time
 import numpy as np
 import torch
 import torchaudio
@@ -151,31 +152,23 @@ class AudioEmbeddingGenerator:
         waveform, sample_rate = torchaudio.load(file_path)
         waveform = waveform.mean(dim=0)  # Convert to mono if stereo
 
-        # Convert to embedding
-        embedding = self.diarize_and_extract_embeddings(waveform, sample_rate)
+        waveform_dict = {"waveform": waveform, "sample_rate": sample_rate}
+        embedding = self.getEmbedding(waveform_dict)
 
         return embedding
     
     def prepare_waveform(self, waveform_np, sample_rate, target_sample_rate=16000):
-        """
-        Prepare a waveform dictionary with PyTorch tensor and resample to 16 kHz if needed.
 
-        Parameters:
-            waveform_np (numpy.ndarray): The input waveform as a NumPy array.
-            sample_rate (int): The original sample rate of the waveform.
-            target_sample_rate (int): The target sample rate (default is 16 kHz).
-
-        Returns:
-            dict: Dictionary with keys 'waveform' (torch.Tensor) and 'sample_rate' (int).
-        """
         # Convert NumPy array to PyTorch tensor
         waveform_tensor = torch.tensor(waveform_np, dtype=torch.float32).unsqueeze(0)  # Add batch dimension
-        if sample_rate != target_sample_rate:
-            
-            # Resample the waveform to the target sample rate
-            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)       #I HAVE LEARNED THAT RESAMPLING IS RLY BAD
-            waveform_tensor = resampler(waveform_tensor)
-
+        # print("Sample rate:",sample_rate)
+        if abs(sample_rate - target_sample_rate) > 10:
+            print("ERROR: SAMPLE RATE DOES NOT MATCH EXPECTED SAMPLE RATE. RECEIVED:",sample_rate,"EXPECTED:",target_sample_rate)
+            # start_time = time.time()            
+            # # Resample the waveform to the target sample rate
+            # resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)       #I HAVE LEARNED THAT RESAMPLING IS RLY BAD
+            # waveform_tensor = resampler(waveform_tensor)
+            # print(f"sampling the waveform took {(time.time() - start_time)} milliseconds.")
 
         return {"waveform": waveform_tensor, "sample_rate": target_sample_rate}
 

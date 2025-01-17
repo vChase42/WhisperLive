@@ -190,7 +190,7 @@ def retrieve_transcript():
     if client.client.transcript is not None:
         transcript_data = list(client.client.transcript)
 
-    if client.client.last_segment is not None:
+    if client.client.last_segment is not None and len(transcript_data) == 0 or transcript_data[-1]['text'] != client.client.last_segment['text']:
         last_segment = dict(client.client.last_segment)
         transcript_data.append(last_segment)
     
