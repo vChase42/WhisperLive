@@ -122,7 +122,7 @@ def load_embeddings_with_clustering(file_paths):
     - list of file labels for each embedding.
     - list of file names.
     """
-    classifier = SpeakerEmbeddingClassifierWithClustering(similarity_threshold=0.6, clustering_eps=0.4)
+    classifier = SpeakerEmbeddingClassifierWithClustering(similarity_threshold=0.75, clustering_eps=0.5)
     all_embeddings = []
     file_labels = []
     file_names = [file_path for file_path in file_paths]  # Preserve file names
@@ -133,8 +133,9 @@ def load_embeddings_with_clustering(file_paths):
             for line in f:
                 embedding = list(map(float, line.strip().split()))
                 embedding = np.array(embedding)
-                all_embeddings.append(embedding)
-                file_labels.append(file_idx)  # Assign a unique label for each file
+                if not np.isnan(embedding).any():
+                    all_embeddings.append(embedding)
+                    file_labels.append(file_idx)  # Assign a unique label for each file
     start_time = time.time()
 
     classifier.bulk_add_embeddings(all_embeddings)

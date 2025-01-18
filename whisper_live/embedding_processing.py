@@ -124,16 +124,15 @@ class AudioEmbeddingGenerator:
     def getEmbedding(self, waveform):
         return self.inference(waveform)
 
-    def enter(self, waveform, fileName = ""):
+    def process_embedding(self, waveform, fileName = ""):
 
         
-        embedding = [self.getEmbedding(waveform)]
-        # embedding = self.diarize_and_extract_embeddings(waveform)
+        embedding = self.getEmbedding(waveform)
+        # embeddings = self.diarize_and_extract_embeddings(waveform)
 
         #adding embeddings to file
         if(fileName != ""):
-            for e in embedding:
-                addEmbeddingToFile(e,fileName)
+            addEmbeddingToFile(embedding,fileName)
 
 
         return embedding
@@ -156,6 +155,39 @@ class AudioEmbeddingGenerator:
         embedding = self.getEmbedding(waveform_dict)
 
         return embedding
+    
+    def prepare_waveforms(self,segments, wav, duration):
+
+        # print("================================================================")
+        # print("Duration:",duration)
+        # print("Wav:",len(wav))
+        # print("SEGMENTS:")
+    
+        tensors = []
+        sample_rate = int(wav.size / duration)
+        for segment in segments:
+            # print("----\nID:",segment.id)
+            # print("start:",segment.start,", end:",segment.end)
+            # print("text:",segment.text)
+
+            
+            # Convert start and end times to sample indices
+            start_sample = int(segment.start * sample_rate)
+            end_sample = int(segment.end * sample_rate)
+
+            # Ensure indices are within bounds of the waveform array
+            start_sample = max(0, min(len(wav), start_sample))
+            end_sample = max(0, min(len(wav), end_sample))
+
+            # Extract the audio segment
+            audio_segment = wav[start_sample:end_sample]
+
+            tensor_wav = self.prepare_waveform(audio_segment,sample_rate)
+            tensors.append(tensor_wav)
+
+        return tensors
+
+
     
     def prepare_waveform(self, waveform_np, sample_rate, target_sample_rate=16000):
 
@@ -182,4 +214,4 @@ if __name__ == "__main__":
     generator = AudioEmbeddingGenerator()
 
     # Pass the audio to the enter function for testing
-    embedding = generator.enter(audio_array, sample_rate)
+    embedding = generator.process_embedding(audio_array, sample_rate)

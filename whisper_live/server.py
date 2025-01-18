@@ -966,7 +966,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.text.append('')
         return segments
 
-    def handle_transcription_output(self, result, duration):
+    def handle_transcription_output(self, result, speakers, duration):
         """
         Handle the transcription output, updating the transcript and sending data to the client.
 
@@ -977,7 +977,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         segments = []
         if len(result):
             self.t_start = None
-            last_segment = self.update_segments(result, duration)
+            last_segment = self.update_segments(result, speakers, duration)
             segments = self.prepare_segments(last_segment)
         else:
             # show previous output if there is pause i.e. no output from whisper
@@ -1015,13 +1015,13 @@ class ServeClientFasterWhisper(ServeClientBase):
 
             input_bytes, duration = self.get_audio_chunk_for_processing()
             if duration < 1.0:
-                time.sleep(0.1)     # wait for audio chunks to arrive
+                time.sleep(0.1)
                 continue
             try:
                 input_sample = input_bytes.copy()
-                result = self.transcribe_audio(input_sample)
+                segments = self.transcribe_audio(input_sample)  #this returns a list of segment objects from openai
 
-                if result is None or self.language is None:
+                if segments is None or self.language is None:
                     self.timestamp_offset += duration
                     time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue
@@ -1029,43 +1029,44 @@ class ServeClientFasterWhisper(ServeClientBase):
                 #--------------------------------
                 #MY EMBEDDING CODE
                 #--------------------------------
-                speaker_id = -3
+                
+                speakers = []
                 try:
-                    if(duration > 3):
-                        #somehow get a count
-                        #if count % 100 == 0:
-                        #   self.embeddings_clusterer._recluster_embeddings()
-                        
-                        
-                        
-                        # print("Segment duration:",duration)
-                        sample_rate = int(input_bytes.size / duration)
 
-                        start_time = time.time()
-                        waveform = self.embeddings_generator.prepare_waveform(input_bytes.copy(),sample_rate)
-                        # print("finished preparing audio, time taken:", time.time() - start_time)
-                        my_embedding = self.embeddings_generator.enter(waveform, "./embeddings/embedding4.txt")[0]   #make the title a timestamp determined by on-connection-start
+                    #SO
+                    #this works!! functional clustering pipeline
+                    #unfortunately, this is in the wrong location!
+                    #this code should be called when self.update_segments() makes a permanent add to the transcripts.
 
-                        start_time = time.time()
-                        speaker_id = self.embeddings_clusterer.add_and_classify_embedding(my_embedding)
+                    # start_time = time.time()
+                    waveforms = self.embeddings_generator.prepare_waveforms(segments, input_bytes.copy(), duration)
+                    # print("finished preparing audio, time taken:", time.time() - start_time)
+                    
+                    for waveform in waveforms:
+                        embedding = self.embeddings_generator.process_embedding(waveform, "./embeddings/embedding4.txt")[0]   #make the title a timestamp determined by on-connection-start
+                        # start_time = time.time()
+                        speaker_id = self.embeddings_clusterer.add_and_classify_embedding([embedding])
+                        speakers.append(speaker_id)
                         # print("Finished classifying embedding, time taken:", time.time() - start_time)
 
                 except Exception as e:
-                    print("EMBEDDINGS DEBUG:",e)
+                    print("EMBEDDINGS ERROR:",e)
                 #--------------------------------
                 #END EMBEDDING CODE
                 #--------------------------------
 
 
-                # if len(result) > 1:
-                #     print(result)
-                self.handle_transcription_output(result, duration)
+                if len(segments) != len(speakers):
+                    print("ERROR")
+                    print("segments:",len(segments),",speakers:",len(speakers))
+                    return
+                self.handle_transcription_output(segments, speakers, duration)
 
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
                 time.sleep(0.01)
 
-    def format_segment(self, start, end, text, completed, audio_bytes = None, speaker = None):
+    def format_segment(self, start, end, text, completed, speaker = None):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -1084,11 +1085,10 @@ class ServeClientFasterWhisper(ServeClientBase):
             'end': "{:.3f}".format(end),
             'text': text,
             'completed': completed,
-            'audio_bytes': audio_bytes,
             'speaker':speaker
         }
 
-    def update_segments(self, segments, duration):
+    def update_segments(self, segments, speakers, duration):
         """
         Processes the segments from whisper. Appends all the segments to the list
         except for the last segment assuming that it is incomplete.
@@ -1126,7 +1126,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 if s.no_speech_prob > self.no_speech_thresh:
                     continue
 
-                self.transcript.append(self.format_segment(start, end, text_, completed=True))
+                self.transcript.append(self.format_segment(start, end, text_, completed=True, speaker=speakers[i]))
                 offset = min(duration, s.end)
 
         # only process the last segment if it satisfies the no_speech_thresh
@@ -1138,8 +1138,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                     self.timestamp_offset + min(duration, segments[-1].end),
                     self.last_text_out,
                     False,
-                    # audio_bytes,
-                    # speaker
+                    speakers[-1]
                 )
 
         if self.last_text_out.strip() == self.prev_out.strip() and self.last_text_out != '':
@@ -1150,10 +1149,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         
         # if same incomplete segment is seen multiple times then update the offset
         # and append the segment to the list
-
-        print("same outut for the latest segment:",self.same_output_count)
         if self.same_output_count > self.same_output_threshold:
-            # print(self.transcript)
             if not len(self.text) or self.text[-1].strip().lower() != self.last_text_out.strip().lower():
                 self.text.append(self.last_text_out)
                 with self.lock:
@@ -1162,8 +1158,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                         self.timestamp_offset + duration,
                         self.last_text_out,
                         True,
-                        # audio_bytes,
-                        # speaker
+                        speakers[-1]
                     ))
             self.last_text_out = ''
             offset = duration
