@@ -101,6 +101,7 @@ class SpeakerEmbeddingClassifierWithClustering:
         self._recluster_embeddings()
 
         # Get the speaker ID after reclustering
+        if(len(self.classifications) == 0): return -1
         return self.classifications[-1]
 
     def bulk_add_embeddings(self, embeddings):

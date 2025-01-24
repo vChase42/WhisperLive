@@ -22,6 +22,52 @@ except Exception:
 
 logging.basicConfig(level=logging.INFO)
 
+#helper functions
+def print_segment(segment):
+    """
+    Prints debug information for a segment.
+
+    Args:
+        segment: An object or dictionary representing a transcription segment.
+                 Expected properties:
+                   - segment.id: The unique ID of the segment.
+                   - segment.start: The start time of the segment in seconds.
+                   - segment.end: The end time of the segment in seconds.
+                   - segment.text: The transcribed text of the segment.
+                   - segment.no_speech_prob (optional): Probability of no speech in this segment.
+    """
+    print("==== Segment Debug Info ====")
+    
+    # Segment ID
+    if hasattr(segment, 'id'):
+        print(f"Segment ID: {segment.id}")
+    else:
+        print("Segment ID: Not available")
+    
+    # Start and End Times
+    if hasattr(segment, 'start') and hasattr(segment, 'end'):
+        duration = segment.end - segment.start
+        print(f"Start Time: {segment.start:.2f}s")
+        print(f"End Time: {segment.end:.2f}s")
+        print(f"Duration: {duration:.2f}s")
+    else:
+        print("Start/End Time: Not available")
+    
+    # Transcribed Text
+    if hasattr(segment, 'text'):
+        print(f"Text: {segment.text}")
+    else:
+        print("Text: Not available")
+    
+    # No Speech Probability (if applicable)
+    if hasattr(segment, 'no_speech_prob'):
+        print(f"No Speech Probability: {segment.no_speech_prob:.2f}")
+    else:
+        print("No Speech Probability: Not available")
+    
+    print("============================")
+
+
 
 class ClientManager:
     def __init__(self, max_clients=4, max_connection_time=600):
@@ -530,8 +576,13 @@ class ServeClientBase(object):
 
         if last_segment is not None:
             segments = segments + [last_segment]
-        for x in segments:
-            print('      ',x['text'])
+
+
+        #LOG SEGMENT PRINT PRINTING USEFUL DEBUG
+        # for x in segments:
+        #     print('      ',x['text'])
+
+
         return segments
 
     def get_audio_chunk_duration(self, input_bytes):
@@ -1043,6 +1094,11 @@ class ServeClientFasterWhisper(ServeClientBase):
                     # print("finished preparing audio, time taken:", time.time() - start_time)
                     
                     for waveform in waveforms:
+                        if(waveform is None):
+                            speakers.append(-1)
+                            continue
+
+
                         embedding = self.embeddings_generator.process_embedding(waveform, "./embeddings/embedding4.txt")[0]   #make the title a timestamp determined by on-connection-start
                         # start_time = time.time()
                         speaker_id = self.embeddings_clusterer.add_and_classify_embedding([embedding])
@@ -1173,3 +1229,5 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.timestamp_offset += offset
 
         return last_segment
+
+

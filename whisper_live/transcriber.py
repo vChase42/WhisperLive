@@ -978,6 +978,15 @@ class WhisperModel:
         segment_duration: float,
         seek: int,
     ) -> List[List[int]]:
+        
+        # print("Split segments Ran.-------------------------------")
+        # print(tokenizer.timestamp_begin)
+        # print(tokens)
+        # print(time_offset)
+        # print(segment_size)
+        # print(segment_duration)
+
+
         current_segments = []
         single_timestamp_ending = (
             len(tokens) >= 2 and tokens[-2] < tokenizer.timestamp_begin <= tokens[-1]
@@ -990,6 +999,15 @@ class WhisperModel:
             and tokens[i] >= tokenizer.timestamp_begin
             and tokens[i - 1] >= tokenizer.timestamp_begin
         ]
+        #Dude, theres some weird fucking shit going on here. What is a tokenizer.timestamp_begin, which seems to be number of frames equal to the duration
+        #i dont understand this tokens list. it is very strange.
+        #The issue lies in the code block below in this if statement:             if len(timestamps) > 0 and timestamps[-1] != tokenizer.timestamp_begin:
+        #for whatever odd reason, if this function is entered once, and a segment is only partially processed (as determined by tokens[]),
+        #then this function will be entered a second time to process the remaining piece of the segment.
+        #unfortunately, an error occurs while calculating the end timestamp during current_segments.append()
+        #this error causes the end timestamp to be *almost* 30 seconds larger than its supposed to be.
+        # This obviously throws off duration calculations later down the line. (workaround: dont rely on durations :/)
+        # Or, figure out the relationship between this function and tokens[] 
 
         if len(consecutive_timestamps) > 0:
             slices = list(consecutive_timestamps)
@@ -1005,7 +1023,7 @@ class WhisperModel:
                     time_offset + start_timestamp_position * self.time_precision
                 )
                 end_time = time_offset + end_timestamp_position * self.time_precision
-
+                # print("VALID LOOKING TIMESTAMP:",end_time)
                 current_segments.append(
                     dict(
                         seek=seek,
@@ -1033,8 +1051,13 @@ class WhisperModel:
             ]
             if len(timestamps) > 0 and timestamps[-1] != tokenizer.timestamp_begin:
                 last_timestamp_position = timestamps[-1] - tokenizer.timestamp_begin
+                # print("timestamp[-1]:",timestamps[-1])
+                # print("tokenizer.timestamp_begin:",tokenizer.timestamp_begin)
+                # print("so this kills it.",last_timestamp_position,", ",self.time_precision)
                 duration = last_timestamp_position * self.time_precision
 
+            # print("FOUND time_offset:",time_offset)
+            # print("FOUND duration:", duration)
             current_segments.append(
                 dict(
                     seek=seek,
@@ -1103,6 +1126,9 @@ class WhisperModel:
         # A later commit should turn this into a simpler nested loop.
         # for seek_clip_start, seek_clip_end in seek_clips:
         #     while seek < seek_clip_end
+
+
+        # print("lets see if these timestamps are it===============:", seek_clips)
         while clip_idx < len(seek_clips):
             seek_clip_start, seek_clip_end = seek_clips[clip_idx]
             if seek_clip_end > content_frames:
