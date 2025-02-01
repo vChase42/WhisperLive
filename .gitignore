@@ -10,3 +10,4 @@ output.srt
 embeddings/*.txt
 embeddings/__pycache__/
 tmp/
+clientvenv/
