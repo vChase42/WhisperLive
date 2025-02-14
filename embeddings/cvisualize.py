@@ -4,10 +4,14 @@ from sklearn.manifold import TSNE
 import os
 import sys
 
+current_dir = os.path.dirname(os.path.abspath(__file__))
+neighbor_folder_path = os.path.abspath(os.path.join(current_dir, "../"))
+sys.path.insert(0, neighbor_folder_path)
 
-from old_clustering import SpeakerEmbeddingClassifierWithClustering
 
 import time
+
+from whisper_live.cluster_embeddings import SpeakerClustering
 
 
 class AudioEmbeddingVisualizerWithHover:
@@ -119,7 +123,6 @@ def load_embeddings_with_clustering(file_paths):
     - list of file labels for each embedding.
     - list of file names.
     """
-    classifier = SpeakerEmbeddingClassifierWithClustering(similarity_threshold=0.75, clustering_eps=0.5)
     all_embeddings = []
     file_labels = []
     file_names = [file_path for file_path in file_paths]  # Preserve file names
@@ -135,8 +138,22 @@ def load_embeddings_with_clustering(file_paths):
                     file_labels.append(file_idx)  # Assign a unique label for each file
     start_time = time.time()
 
+
+    # clusterer = EmbeddingClusterer()
+    # clusterer.configure({
+    #     'cluster_distance_threshold': 0.9
+    # })
+
+    # speaker_ids = []
+    # for embedding in all_embeddings:
+    #     speaker_ids.append(clusterer.add_embedding(embedding))
+    
+    classifier = SpeakerClustering()
     classifier.bulk_add_embeddings(all_embeddings)
     speaker_ids = classifier.get_classifications()
+
+
+
     all_embeddings = np.array(all_embeddings)
     print(f"Time taken to cluster all {len(all_embeddings)} embeddings is {time.time() - start_time}")
     return all_embeddings, speaker_ids, file_labels, file_names

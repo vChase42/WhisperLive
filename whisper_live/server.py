@@ -1258,8 +1258,12 @@ class ServeClientFasterWhisper(ServeClientBase):
     def classify_audio_segment(self, audio_chunk_np, sample_rate, fileName="./embeddings/embedding_latest.txt"):
         waveform = self.embeddings_generator.prepare_waveform(audio_chunk_np, sample_rate)
         embedding = self.embeddings_generator.process_embedding(waveform, fileName)
-        print("this the embedding:",embedding)
-        print("length:",len(embedding))
-        self.embeddings_clusterer.add_embedding(embedding)
-        speaker_id = self.embeddings_clusterer.get_last_speaker_id()
+        # print("this the embedding:",embedding)
+        # print("length:",len(embedding))
+        
+        # self.embeddings_clusterer.add_embedding(embedding)
+        # speaker_id = self.embeddings_clusterer.get_last_speaker_id()
+        
+        speaker_id = self.embeddings_clusterer.add_and_classify_embedding(embedding)
+        
         return speaker_id
