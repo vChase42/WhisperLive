@@ -3,7 +3,47 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 
+from pyannote.audio.pipelines.clustering import Clustering
+
+#requirements
+#add an embedding and then retrieve classification for that embedding
+
+#when reclustering, if old embeddings get reclassified, should they be updated in the logs?
+#when reclustering, if two 'distinct' clusters become close (e.g, they were 1 speaker all along), handle a merge?
+
+
 class SpeakerClustering:
+    def __init__(self, similarity_threshold=0.75, clustering_eps=0.5, clustering_min_samples=2):
+        self.similarity_threshold = similarity_threshold
+        # self.max_dist = max_dist
+
+        self.embeddings = []
+
+
+        self.clustering = Clustering["AgglomerativeClustering"].value(metric="cosine")
+
+        self.num_clusters = 2
+
+    def add_and_classify_embedding(self,embedding):
+        """
+        Add and classify one embedding
+
+        Args:
+            embedding (np.array): n-dimensional speaker embedding
+        returns:
+            speaker_id (int): the id of the cluster that the embedding fits into
+        """
+
+        self.embeddings.append(embedding)
+        segmentations = np.ones((len(self.embeddings), 1)) 
+
+        cluster_labels, _, _ = self.clustering(embeddings=self.embeddings, segmentations=segmentations, num_clusters=self.num_clusters)
+
+        return cluster_labels[-1]
+    
+
+
+class SpeakerClusteringOld:
     def __init__(self, similarity_threshold=0.75, clustering_eps=0.5, clustering_min_samples=2):
         """
         Initializes the SpeakerEmbeddingClassifier with clustering.

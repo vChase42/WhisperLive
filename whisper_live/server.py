@@ -5,6 +5,7 @@ import json
 import functools
 import logging
 from enum import Enum
+import traceback
 from typing import List, Optional
 
 import torch
@@ -1125,6 +1126,7 @@ class ServeClientFasterWhisper(ServeClientBase):
 
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
+                logging.error(traceback.format_exc())  
                 time.sleep(0.01)
 
     def format_segment(self, start, end, text, completed, speaker = None):
@@ -1209,7 +1211,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                     self.timestamp_offset + min(duration, segments[-1].end),
                     self.last_text_out,
                     False,
-                    -1
+                    -77
                 )
 
         if self.last_text_out.strip() == self.prev_out.strip() and self.last_text_out != '':
