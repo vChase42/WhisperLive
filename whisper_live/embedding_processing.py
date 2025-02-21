@@ -156,6 +156,41 @@ class AudioEmbeddingGenerator:
     #also holy shit my neck hurty hurty.
 
 
+    #OKAY.
+    #i need to start over. one step at a time. here we go
+
+    #step 1: Collect high quality audio files
+    # - 10 single voice audio files
+    # - 5 audio files that contain 2 or more speakers
+    # - 5 audio files that contains OVERLAPPING speakers
+
+    #step 2: create a visualization suite.
+    # - use librosa and matplotlib to visualize audio
+    # - also make use of pyannote/segmentation to generate visualizations
+    # - also make use of pyannote/speaker-separation to generate visualizations
+
+    #step 3: FIGURE OUT MY SLIDING WINDOW
+    # - what is the nature of the sliding window in server.py
+    # - define it.
+    # - continue
+
+    #step 4: create embeddings debugger.py
+    # - ensure that embeddings are similar using pure distance from 
+    #from scipy.spatial.distance import cdist
+    #distance = cdist(embedding1, embedding2, metric="cosine")[0,0]
+
+    #step 5: visualize embeddings visually
+    # - make cvisualize easier to code and update i guess.
+    # - improve the api essentially
+
+    #step 6: cluster the stuff
+    # - just rely on hdbscan. its great.
+
+    #step 7: visualize the clusters
+    # - use TSNE for visualizing? seems good.
+
+
+
     def getSegmentations1(self, audio_tensor):
         return self.segmenter(audio_tensor)
 
