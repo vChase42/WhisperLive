@@ -1211,7 +1211,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                     self.timestamp_offset + min(duration, segments[-1].end),
                     self.last_text_out,
                     False,
-                    -77
+                    None
                 )
 
         if self.last_text_out.strip() == self.prev_out.strip() and self.last_text_out != '':
@@ -1233,7 +1233,6 @@ class ServeClientFasterWhisper(ServeClientBase):
                 sample_end = int(sample_end)
                 audio_chunk = current_audio[sample_start:sample_end]
                 speaker_id = self.classify_audio_segment(audio_chunk,sample_rate)
-                print("10s, new speaker id added!:", speaker_id)
 
                 with self.lock:
                     self.transcript.append(self.format_segment(
@@ -1260,6 +1259,9 @@ class ServeClientFasterWhisper(ServeClientBase):
     def classify_audio_segment(self, audio_chunk_np, sample_rate, fileName="./embeddings/embedding_latest.txt"):
         waveform = self.embeddings_generator.prepare_waveform(audio_chunk_np, sample_rate)
         embedding = self.embeddings_generator.process_embedding(waveform, fileName)
+        # segmentations = self.embeddings_generator.getSegmentations1(waveform)
+
+        # embeddings = self.embeddings_generator.getEmbeddingsBySegmentation(waveform, segmentations)
         # print("this the embedding:",embedding)
         # print("length:",len(embedding))
         

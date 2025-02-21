@@ -11,3 +11,4 @@ embeddings/*.txt
 embeddings/__pycache__/
 tmp/
 clientvenv/
+AUDIO_SAMPLES/

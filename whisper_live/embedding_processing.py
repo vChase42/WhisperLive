@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torchaudio
 from pyannote.audio import Model, Pipeline, Inference
-
+from pyannote.audio.pipelines import OverlappedSpeechDetection, Resegmentation
 
 
 from dotenv import load_dotenv
@@ -135,6 +135,69 @@ class AudioEmbeddingGenerator:
         self.embedding_model = Model.from_pretrained("pyannote/embedding", use_auth_token=hf_key,device="cuda")
         self.inference = Inference(self.embedding_model, window="whole")
 
+        model = Model.from_pretrained("pyannote/segmentation", use_auth_token=hf_key)
+        self.segmenter = Inference(model)
+
+        # Define hyperparameters for OSD
+        self.HYPER_PARAMETERS = {
+            "onset": 0.5,  # Threshold for detecting speech onset
+            "offset": 0.5,  # Threshold for detecting speech offset
+            "min_duration_on": 0.0,  # Minimum speech segment duration
+            "min_duration_off": 0.0,  # Minimum silence duration before merging segments
+        }
+
+    #WHAT IM DOING HERE MAKES NO SENSE MAN.
+    #THESE SEGMENTATIONS MAKE NO SENSE
+    #THIS CLUSTERING ALG MAKES NO SENSE
+    #IT KINDOF ASSUMES IM SEGMENTING AN ENTIRE FILE IN FULL.
+    #MY CLUSTERER HAS TO FUNCTION DIFFERENTLY MAN
+    #Pyannotes clusterer, segments, and embeddings must span the ENTIRETY of the audio. we... kindof want to only process embeddings for latest chunk while keeping
+    #information about earlier audio chunks. so, keep all embeddings, but recent segments less so.
+    #also holy shit my neck hurty hurty.
+
+
+    def getSegmentations1(self, audio_tensor):
+        return self.segmenter(audio_tensor)
+
+    def getSegmentations2(self, audio_tensor):
+        """
+        Process NumPy audio frames and return speaker segments with timestamps.
+
+        Args:
+            np_frames (np.ndarray): NumPy array containing audio waveform.
+            sr (int): Sample rate of the audio.
+
+        Returns:
+            List[Dict]: A list of speaker segments with start, end times.
+        """
+        # Convert NumPy array into a format that Pyannote expects
+
+        # Run Overlapped Speech Detection (OSD)
+        pipeline = OverlappedSpeechDetection(segmentation=self.segmenter)
+        pipeline.instantiate(self.HYPER_PARAMETERS)
+        osd_result = pipeline(audio_tensor)
+
+        # Apply Resegmentation
+        reseg_pipeline = Resegmentation(segmentation="pyannote/segmentation", diarization="baseline")
+        reseg_pipeline.instantiate(self.HYPER_PARAMETERS)
+        resegmented_result = reseg_pipeline({"audio": audio_tensor, "baseline": osd_result})
+
+        return resegmented_result
+    
+        # Extract speaker segments
+        speaker_segments = []
+        for segment, _, speaker in resegmented_result.itertracks(yield_label=True):
+            speaker_segments.append({
+                "speaker": speaker,
+                "start": round(segment.start, 3),
+                "end": round(segment.end, 3)
+            })
+
+        return speaker_segments
+
+
+    def getEmbeddingsBySegmentation(self, waveform, segmentations):
+        pass
 
     def getEmbedding(self, waveform):
         try:

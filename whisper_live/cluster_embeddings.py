@@ -12,7 +12,7 @@ from pyannote.audio.pipelines.clustering import Clustering
 #when reclustering, if two 'distinct' clusters become close (e.g, they were 1 speaker all along), handle a merge?
 
 
-class SpeakerClustering:
+class SpeakerClusteringNew:
     def __init__(self, similarity_threshold=0.75, clustering_eps=0.5, clustering_min_samples=2):
         self.similarity_threshold = similarity_threshold
         # self.max_dist = max_dist
@@ -24,7 +24,7 @@ class SpeakerClustering:
 
         self.num_clusters = 2
 
-    def add_and_classify_embedding(self,embedding):
+    def add_and_classify_embedding(self,embedding, segmentation):
         """
         Add and classify one embedding
 
@@ -35,16 +35,15 @@ class SpeakerClustering:
         """
 
         self.embeddings.append(embedding)
-        segmentations = np.ones((len(self.embeddings), 1)) 
 
-        cluster_labels, _, _ = self.clustering(embeddings=self.embeddings, segmentations=segmentations, num_clusters=self.num_clusters)
+        cluster_labels, _, _ = self.clustering(embeddings=self.embeddings, segmentations=segmentation, num_clusters=self.num_clusters)
 
         return cluster_labels[-1]
     
 
 
-class SpeakerClusteringOld:
-    def __init__(self, similarity_threshold=0.75, clustering_eps=0.5, clustering_min_samples=2):
+class SpeakerClustering:
+    def __init__(self, similarity_threshold=0.75, clustering_eps=0.5, clustering_min_samples=1):
         """
         Initializes the SpeakerEmbeddingClassifier with clustering.
         Args:
@@ -136,7 +135,6 @@ class SpeakerClusteringOld:
         self._recluster_embeddings()
 
         # Get the speaker ID after reclustering
-        print("bruh:",len(self.classifications))
         if(len(self.classifications) == 0): return -1
         return self.classifications[-1]
 
