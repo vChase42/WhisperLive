@@ -1,358 +1,226 @@
-import time
-import numpy as np
-import torch
-import torchaudio
-from pyannote.audio import Model, Pipeline, Inference
-from pyannote.audio.pipelines import OverlappedSpeechDetection, Resegmentation
-
-
-from dotenv import load_dotenv
+#!/usr/bin/env python3
+import sys
 import os
+import time
+from typing import Any, Dict, List
+import torch
+import numpy as np
+import librosa
+from pyannote.audio import Model, Inference
+from pyannote.audio.pipelines import VoiceActivityDetection
+from pyannote.core import Segment, SlidingWindowFeature
+from pyannote.audio.pipelines.clustering import AgglomerativeClustering
+from dotenv import load_dotenv
 load_dotenv()
-hf_key = os.getenv('HF_KEY')
+HF_KEY = os.getenv("HF_KEY")
+if HF_KEY is None:
+    print("Error: Please set the HF_KEY environment variable with your Hugging Face token.")
+    sys.exit(1)
 
+if torch.cuda.is_available():
+    print("CUDA IS AVAILABLE!!! GPU!!!")
+else:
+    print("NO CUDA IS AVAILABLE. :(. using cpu.")
 
-#debug for saving and looking at data.
-import atexit
-# Global variable to hold the open file object
-global_file = None
-global_count = 0
-
-def print_segment(segment):
-    """
-    Prints debug information for a segment, including words and their timestamps.
-
-    Args:
-        segment: An object or dictionary representing a transcription segment.
-                 Expected properties:
-                   - segment.id: The unique ID of the segment.
-                   - segment.start: The start time of the segment in seconds.
-                   - segment.end: The end time of the segment in seconds.
-                   - segment.text: The transcribed text of the segment.
-                   - segment.words (optional): List of words, each with start and end times.
-    """
-    print("==== Segment Debug Info ====")
-
-    # Segment ID
-    if hasattr(segment, 'id'):
-        print(f"Segment ID: {segment.id}")
-    else:
-        print("Segment ID: Not available")
-
-    # Start and End Times
-    if hasattr(segment, 'start') and hasattr(segment, 'end'):
-        duration = segment.end - segment.start
-        print(f"Start Time: {segment.start:.2f}s")
-        print(f"End Time: {segment.end:.2f}s")
-        print(f"Duration: {duration:.2f}s")
-    else:
-        print("Start/End Time: Not available")
-
-    # Transcribed Text
-    if hasattr(segment, 'text'):
-        print(f"Text: {segment.text}")
-    else:
-        print("Text: Not available")
-
-    # Word-Level Details
-    if hasattr(segment, 'words') and segment.words:
-        print("Words and Timestamps:")
-        for word in segment.words:
-            if hasattr(word, 'start') and hasattr(word, 'end') and hasattr(word, 'text'):
-                print(f"  Word: '{word.text}', Start: {word.start:.2f}s, End: {word.end:.2f}s")
-            else:
-                print("  Word data missing or incomplete.")
-    else:
-        print("Words: Not available")
-
-    print("============================")
-
-def ensure_folder_exists(folder_path):
-    """Ensure that the specified folder exists."""
-    if not os.path.exists(folder_path):
-        os.makedirs(folder_path)
-
-def close_file_gracefully():
-    """Close the open file gracefully on termination."""
-    global global_file
-    if global_file:
-        global_file.close()
-        print("File closed gracefully.")
-
-def addEmbeddingToFile(embedding, fileName):
-    """
-    Add an embedding to the specified file. Opens the file only once and appends data.
-
-    Parameters:
-    - embedding: list, numpy array, or tensor of embeddings to be saved
-    - fileName: str, path to the file where embeddings are stored
-    """
-    global global_file
-    
-    # Ensure the embeddings folder exists
-    folder_path = os.path.dirname(fileName)
-    ensure_folder_exists(folder_path)
-
-    # Open the file only once
-    if global_file is None:
-        global_file = open(fileName, "a")  # Append mode
-        print(f"File opened for appending: {fileName}")
-
-        # Register the file close function to trigger on exit
-        atexit.register(close_file_gracefully)
-    
-    # Convert embedding to a string format (space-separated)
-    if isinstance(embedding, (list, tuple)):
-        embedding_str = " ".join(map(str, embedding))
-    elif isinstance(embedding, np.ndarray):  # Handle numpy arrays directly
-        embedding_str = " ".join(map(str, embedding.flatten()))
-    elif hasattr(embedding, "tolist"):  # Handle torch tensors or other array-like objects
-        embedding_str = " ".join(map(str, embedding.tolist()))
-    else:
-        raise ValueError("Embedding must be a list, tuple, numpy array, or tensor.")
-    
-    # Write embedding to file
-    global_file.write(embedding_str + "\n")
-    global_file.flush()  # Ensure data is written to disk
-    # print("Embedding appended to file.")
-
+# Global device
 
 
 class AudioEmbeddingGenerator:
-    def __init__(self):
-        # Load the speaker embedding model
-        if not torch.cuda.is_available():
-            print("-------------------------------")
-            print("WARNING: CUDA is not available!")
-            print("-------------------------------")
-
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization-3.1", use_auth_token=hf_key)
-        self.segmentation = Model.from_pretrained("pyannote/segmentation", use_auth_token="ACCESS_TOKEN_GOES_HERE")
-
-
-        self.diarization_pipeline.to(device)
-        self.embedding_model = Model.from_pretrained("pyannote/embedding", use_auth_token=hf_key,device="cuda")
-        self.inference = Inference(self.embedding_model, window="whole")
-
-        model = Model.from_pretrained("pyannote/segmentation", use_auth_token=hf_key)
-        self.segmenter = Inference(model)
-
-        # Define hyperparameters for OSD
-        self.HYPER_PARAMETERS = {
-            "onset": 0.5,  # Threshold for detecting speech onset
-            "offset": 0.5,  # Threshold for detecting speech offset
-            "min_duration_on": 0.0,  # Minimum speech segment duration
-            "min_duration_off": 0.0,  # Minimum silence duration before merging segments
-        }
-
-    #WHAT IM DOING HERE MAKES NO SENSE MAN.
-    #THESE SEGMENTATIONS MAKE NO SENSE
-    #THIS CLUSTERING ALG MAKES NO SENSE
-    #IT KINDOF ASSUMES IM SEGMENTING AN ENTIRE FILE IN FULL.
-    #MY CLUSTERER HAS TO FUNCTION DIFFERENTLY MAN
-    #Pyannotes clusterer, segments, and embeddings must span the ENTIRETY of the audio. we... kindof want to only process embeddings for latest chunk while keeping
-    #information about earlier audio chunks. so, keep all embeddings, but recent segments less so.
-    #also holy shit my neck hurty hurty.
-
-
-    #OKAY.
-    #i need to start over. one step at a time. here we go
-
-    #step 1: Collect high quality audio files
-    # - 10 single voice audio files
-    # - 5 audio files that contain 2 or more speakers
-    # - 5 audio files that contains OVERLAPPING speakers
-
-    #step 2: create a visualization suite.
-    # - use librosa and matplotlib to visualize audio
-    # - also make use of pyannote/segmentation to generate visualizations
-    # - also make use of pyannote/speaker-separation to generate visualizations
-
-    #step 3: FIGURE OUT MY SLIDING WINDOW
-    # - what is the nature of the sliding window in server.py
-    # - define it.
-    # - continue
-
-    #step 4: create embeddings debugger.py
-    # - ensure that embeddings are similar using pure distance from 
-    #from scipy.spatial.distance import cdist
-    #distance = cdist(embedding1, embedding2, metric="cosine")[0,0]
-
-    #step 5: visualize embeddings visually
-    # - make cvisualize easier to code and update i guess.
-    # - improve the api essentially
-
-    #step 6: cluster the stuff
-    # - just rely on hdbscan. its great.
-
-    #step 7: visualize the clusters
-    # - use TSNE for visualizing? seems good.
-
-
-
-    def getSegmentations1(self, audio_tensor):
-        return self.segmenter(audio_tensor)
-
-    def getSegmentations2(self, audio_tensor):
+    def __init__(self, hf_key, debug=False):
         """
-        Process NumPy audio frames and return speaker segments with timestamps.
-
-        Args:
-            np_frames (np.ndarray): NumPy array containing audio waveform.
-            sr (int): Sample rate of the audio.
-
-        Returns:
-            List[Dict]: A list of speaker segments with start, end times.
+        Initializes the audio embedding generator by loading the embedding model,
+        segmentation model, and instantiating the VAD pipeline.
+        
+        Parameters
+        ----------
+        hf_key : str
+            Hugging Face token.
+        debug : bool
+            If True, prints status and timing information.
         """
-        # Convert NumPy array into a format that Pyannote expects
+        self.debug = debug
 
-        # Run Overlapped Speech Detection (OSD)
-        pipeline = OverlappedSpeechDetection(segmentation=self.segmenter)
-        pipeline.instantiate(self.HYPER_PARAMETERS)
-        osd_result = pipeline(audio_tensor)
+        if self.debug:
+            print("Loading embedding model...")
+        self.embed_model = Model.from_pretrained("pyannote/wespeaker-voxceleb-resnet34-LM",
+                                                 use_auth_token=hf_key)
+        self.inference_obj = Inference(self.embed_model, window="whole")
+        
+        if self.debug:
+            print("Loading segmentation model...")
+        self.segmentation_model = Model.from_pretrained("pyannote/segmentation-3.0",
+                                                        use_auth_token=hf_key)
+        # Hyper-parameters for VAD segmentation
+        self.hyper_parameters = {"min_duration_on": 0.0, "min_duration_off": 0.0}
+        
+        if self.debug:
+            print("Instantiating VAD pipeline...")
+        self.vad_pipeline = VoiceActivityDetection(segmentation=self.segmentation_model)
+        self.vad_pipeline.instantiate(self.hyper_parameters)
+        DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.vad_pipeline.to(DEVICE)
 
-        # Apply Resegmentation
-        reseg_pipeline = Resegmentation(segmentation="pyannote/segmentation", diarization="baseline")
-        reseg_pipeline.instantiate(self.HYPER_PARAMETERS)
-        resegmented_result = reseg_pipeline({"audio": audio_tensor, "baseline": osd_result})
+    def get_embeddings(self, audio_data: Dict[str, Any]) -> List[np.ndarray]:
+        """
+        Given audio data (a dict with keys "waveform" and "sample_rate"),
+        this method runs VAD segmentation using the pre-initialized VAD pipeline and then
+        extracts one embedding per detected speech segment using the preloaded speaker embedding model.
+        If no segments are detected, it falls back to the entire audio.
+        
+        Parameters
+        ----------
+        audio_data : dict
+            Dictionary with:
+                "waveform"   : torch.tensor containing audio samples (with a batch dimension).
+                "sample_rate": int, e.g. 16000.
+        
+        Returns
+        -------
+        embeddings_list : list
+            A list of embeddings (each is a numpy array of shape (1, D)).
+        """
+        waveform = audio_data["waveform"]
+        sr = audio_data["sample_rate"]
+        duration = waveform.size(-1) / sr  # total duration in seconds
 
-        return resegmented_result
+        # --- Run segmentation (VAD) ---
+        t0 = time.time()
+        segmentation_annotation = self.vad_pipeline(audio_data)
+        elapsed_time = time.time() - t0
+        if self.debug:
+            print(f"Time taken for VAD pipeline: {elapsed_time:.2f} seconds")
     
-        # Extract speaker segments
-        speaker_segments = []
-        for segment, _, speaker in resegmented_result.itertracks(yield_label=True):
-            speaker_segments.append({
-                "speaker": speaker,
-                "start": round(segment.start, 3),
-                "end": round(segment.end, 3)
-            })
-
-        return speaker_segments
-
-
-    def getEmbeddingsBySegmentation(self, waveform, segmentations):
-        pass
-
-    def getEmbedding(self, waveform):
-        try:
-            return self.inference(waveform)
-        except Exception as e:
-            print("Failed embedding processing:",e)
-            print("Waveform Tensor Shape:", waveform["waveform"].shape)
-
-            # Print the sample rate
-            print("Sample Rate:", waveform["sample_rate"])
-
-            # Calculate and print the duration of the waveform
-            waveform_length = waveform["waveform"].shape[0]
-            sample_rate = waveform["sample_rate"]
-            duration = waveform_length / sample_rate
-            print("Waveform Length (in samples):", waveform_length)
-            print("Waveform Duration (in seconds):", duration)
-
-            # Check if there are NaNs or infinite values in the waveform
-            if torch.isnan(waveform["waveform"]).any():
-                print("WARNING: NaN values detected in the waveform tensor.")
-            if torch.isinf(waveform["waveform"]).any():
-                print("WARNING: Infinite values detected in the waveform tensor.")
-            return None
-
-    def process_embedding(self, waveform, fileName = ""):
-
-        try:
-                
-            embedding = self.getEmbedding(waveform)
-            # embeddings = self.diarize_and_extract_embeddings(waveform)
-
-            #adding embeddings to file
-            if(fileName != ""):
-                addEmbeddingToFile(embedding,fileName)
-        except Exception as e:
-            print("EMBEDDING CREATION ERROR:",e)
-
-        return embedding
-
-    def convertFileToEmbedding(self, file_path):
-        """
-        Convert an audio file (.wav) to a speaker embedding.
-
-        Parameters:
-        - file_path: str, path to the .wav audio file
-
-        Returns:
-        - embedding: numpy array, speaker embedding vector
-        """
-        # Load audio file
-        waveform, sample_rate = torchaudio.load(file_path)
-        waveform = waveform.mean(dim=0)  # Convert to mono if stereo
-
-        waveform_dict = {"waveform": waveform, "sample_rate": sample_rate}
-        embedding = self.getEmbedding(waveform_dict)
-
-        return embedding
-    
-    def prepare_waveforms(self,segments, wav, duration, min_duration=2.5):
-
-        # print("================================================================")
-        # print("Duration:",duration)
-        # print("Wav:",len(wav))
-        # print("SEGMENTS:")
-    
-        tensors = []
-        sample_rate = int(wav.size / duration)
-        # print("Duration:",duration)
-        for segment in segments:
-
-            # print_segment(segment)
-            # Convert start and end times to sample indices
-            start_sample = int(segment.start * sample_rate)
-            end_sample = int(segment.end * sample_rate)
-
-            # Ensure indices are within bounds of the waveform array
-            # print(f"Before: {start_sample}, {end_sample}")
-            start_sample = max(0, min(len(wav), start_sample))
-            end_sample = max(0, min(len(wav), end_sample))
-
-            # print(f"After: {start_sample}, {end_sample}")
-            if((end_sample - start_sample)/sample_rate < min_duration):
-                tensors.append(None)
-                continue
-
-            # Extract the audio segment
-            # print("number of samples:",end_sample-start_sample)
-            audio_segment = wav[start_sample:end_sample]
-
-            tensor_wav = self.prepare_waveform(audio_segment,sample_rate)
-            tensors.append(tensor_wav)
-
-        return tensors
-
-
+        embeddings_list = []
+        segments = list(segmentation_annotation.itersegments())
+        # If no speech is detected, fallback to full audio.
+        if not segments:
+            segments = [Segment(0, duration)]
+        for seg in segments:
+            t0 = time.time()
+            clamped_start = max(seg.start, 0)
+            clamped_end = min(seg.end, duration)
+            clamped_seg = Segment(clamped_start, clamped_end)
+            # INFERENCE_OBJ.crop returns a numpy array of shape (1, D)
+            embedding = self.inference_obj.crop(audio_data, clamped_seg)
+            crop_time = time.time() - t0
+            if self.debug:
+                print(f"Time taken for embedding extraction on segment {seg}: {crop_time:.2f} seconds")
+            embeddings_list.append(embedding)
+            
+        return embeddings_list
     
     def prepare_waveform(self, waveform_np, sample_rate, target_sample_rate=16000):
 
-        # Convert NumPy array to PyTorch tensor
         waveform_tensor = torch.tensor(waveform_np, dtype=torch.float32).unsqueeze(0)  # Add batch dimension
-        # print("Sample rate:",sample_rate)
         if abs(sample_rate - target_sample_rate) > 5:
             print("ERROR: SAMPLE RATE DOES NOT MATCH EXPECTED SAMPLE RATE. RECEIVED:",sample_rate,"EXPECTED:",target_sample_rate)
-            # start_time = time.time()            
-            # # Resample the waveform to the target sample rate
-            # resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=target_sample_rate)       #I HAVE LEARNED THAT RESAMPLING IS RLY BAD
-            # waveform_tensor = resampler(waveform_tensor)
-            # print(f"sampling the waveform took {(time.time() - start_time)} milliseconds.")
 
         return {"waveform": waveform_tensor, "sample_rate": target_sample_rate}
 
-# Example usage (for testing purposes)
+
+def normalize(file_soft_map):
+    # Normalize the soft probabilities so that each vector sums to 1.
+    for fname in file_soft_map:
+        normalized_list = []
+        for vec in file_soft_map[fname]:
+            s = sum(vec)
+            if s > 0:
+                normalized_vec = [x / s for x in vec]
+            else:
+                normalized_vec = vec
+            normalized_list.append(normalized_vec)
+        file_soft_map[fname] = normalized_list
+    return file_soft_map
+
+#THIS FUNCTION TAKES THE BELOW INPUT FILES, AND EXTRACTS EMBEDDINGS, AND CLUSTERS THE EMBEDDINGS, THEN DISPLAYS HOW THE FILES GOT CLASSIFIED
+def main():
+    # List of sample audio file paths.
+    audio_files = [
+        "callum.mp3",
+        "how-to-use-one-of-these_G#_minor.wav",
+        "vintage-spoken-picking-up-a-strange-signal_106bpm_G_major.wav",
+        "grandpa.mp3",
+        "rachel.mp3",
+        "W L Oxley.mp3",
+        "forget-facts-just-trust_F_minor.wav",
+        "the-perfect-crime_C#_minor.wav"
+    ]
+    
+    # Instantiate the AudioEmbeddingGenerator with debug turned on.
+    generator = AudioEmbeddingGenerator(HF_KEY, debug=True)
+    
+    # We'll store:
+    #  - global_embeddings: a flat list of embeddings (each (1, D))
+    #  - embedding_file_mapping: the file name for each embedding
+    global_embeddings = []     
+    embedding_file_mapping = []  
+    
+    for file in audio_files:
+        if not os.path.isfile(file):
+            print(f"File not found: {file}")
+            continue
+        # Load audio with librosa.
+        signal, sr = librosa.load(file, sr=16000)
+        # Ensure a batch dimension: shape becomes (1, N)
+        waveform_tensor = torch.tensor(signal).unsqueeze(0)
+        audio_data = {"waveform": waveform_tensor, "sample_rate": sr}
+        embeddings = generator.get_embeddings(audio_data)  # list of (1, D) arrays
+        if not embeddings:
+            print(f"No embeddings extracted for file {file}.")
+            continue
+        # For each embedding extracted from this file, record the file name.
+        for emb in embeddings:
+            global_embeddings.append(emb)
+            embedding_file_mapping.append(file)
+    
+    if not global_embeddings:
+        print("No embeddings were extracted from any file.")
+        sys.exit(1)
+    
+    # Process global embeddings into a 3D numpy array of shape (N, 1, D)
+    processed_embeddings = global_embeddings
+    embeddings_array = np.array(processed_embeddings)
+    embeddings_array = np.atleast_2d(embeddings_array)  # ensure shape (N, D)
+    embeddings_array = embeddings_array.reshape(embeddings_array.shape[0], 1, embeddings_array.shape[1])
+    
+    # --- Create dummy segmentation ---
+    # Since we assume every extracted embedding is valid, we mark them as active.
+    N = embeddings_array.shape[0]
+    dummy_data = np.ones((N, 1, 1))
+    from pyannote.core import SlidingWindow  # ensure imported
+    dummy_window = SlidingWindow(start=0, duration=1, step=1)
+    dummy_segmentation = SlidingWindowFeature(data=dummy_data, sliding_window=dummy_window)
+    
+    # --- Clustering ---
+    clusterer = AgglomerativeClustering(metric="cosine", max_num_embeddings=np.inf)
+    clusterer.min_cluster_size = 2   # native int
+    clusterer.method = "weighted"     # native string
+    clusterer.threshold = .7         # native float
+
+    print("before cluster!")
+    hard_clusters, soft_clusters, centroids = clusterer(embeddings_array, segmentations=dummy_segmentation)
+    
+    print("after cluster!")
+    # --- Reconstruct file-level cluster assignments ---
+    # Build a mapping from file name to a list of cluster labels.
+    file_cluster_map = {}
+    file_soft_map = {}
+    for fname in set(embedding_file_mapping):
+        file_cluster_map[fname] = []
+        file_soft_map[fname] = []
+    for idx, fname in enumerate(embedding_file_mapping):
+        # hard_clusters is shape (N, 1) and soft_clusters is shape (N, 1, num_clusters)
+        file_cluster_map[fname].append(int(hard_clusters[idx, 0]))
+        file_soft_map[fname].append(soft_clusters[idx, 0, :].tolist())
+    
+    # Print out the cluster assignments and probabilities for each file.
+    file_soft_map = normalize(file_soft_map)
+    for fname in file_cluster_map:
+        clusters = file_cluster_map[fname]
+        soft_probs = file_soft_map[fname]
+        print(f"File '{fname}' produced {len(clusters)} embedding(s) with clusters: {clusters}")
+        soft_probs = [max(soft) for soft in soft_probs]
+        # print(f"    Soft probabilities: {soft_probs}")
+
 if __name__ == "__main__":
-    # Simulate a 10-second audio at 16kHz
-    audio_array = np.random.randn(16000 * 10)  # Replace with actual waveform data
-    sample_rate = 16000
-
-    # Initialize the generator
-    generator = AudioEmbeddingGenerator()
-
-    # Pass the audio to the enter function for testing
-    embedding = generator.process_embedding(audio_array, sample_rate)
+    main()

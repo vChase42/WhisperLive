@@ -1,3 +1,4 @@
+from collections import Counter
 import os
 import time
 import threading
@@ -22,9 +23,14 @@ except Exception:
     pass
 
 logging.basicConfig(level=logging.INFO)
-
-
 import soundfile as sf
+
+from dotenv import load_dotenv
+load_dotenv()
+HF_KEY = os.getenv("HF_KEY")
+
+
+
 
 
 #helper functions
@@ -253,6 +259,7 @@ class TranscriptionServer:
 
                 logging.info("Running faster_whisper backend.")
         except Exception as e:
+            print("Faster whisper init failed")
             return
 
         if client is None:
@@ -369,6 +376,7 @@ class TranscriptionServer:
             logging.info("Connection closed by client")
         except Exception as e:
             logging.error(f"Unexpected error: {str(e)}")
+            traceback.print_exc()
         finally:
             if self.client_manager.get_client(websocket):
                 self.cleanup(websocket)
@@ -583,12 +591,13 @@ class ServeClientBase(object):
             segments = segments + [last_segment]
 
 
-        #LOG SEGMENT PRINT PRINTING USEFUL DEBUG
-        # for x in segments:
-        #     print('      ',x['text'])
+        cleaned_segments = []
+        for segment in segments:
+            segment_copy = segment.copy()
+            segment_copy.pop('embeddings', None)  # safely remove if present
+            cleaned_segments.append(segment_copy)
 
-
-        return segments
+        return cleaned_segments
 
     def get_audio_chunk_duration(self, input_bytes):
         """
@@ -864,9 +873,8 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.no_speech_thresh = 0.45
         self.same_output_threshold = 10
 
-        self.embeddings_generator = AudioEmbeddingGenerator()
-        self.embeddings_clusterer = SpeakerClustering(similarity_threshold=0.70)
-
+        self.embeddings_generator = AudioEmbeddingGenerator(HF_KEY)
+        self.embeddings_clusterer = SpeakerClustering()
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
         if device == "cuda":
@@ -1129,7 +1137,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 logging.error(traceback.format_exc())  
                 time.sleep(0.01)
 
-    def format_segment(self, start, end, text, completed, speaker = None):
+    def format_segment(self, start, end, text, completed, speaker = None, embeddings = None):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -1148,7 +1156,8 @@ class ServeClientFasterWhisper(ServeClientBase):
             'end': "{:.3f}".format(end),
             'text': text,
             'completed': completed,
-            'speaker':speaker
+            'speaker': int(speaker) if speaker != None else None,
+            'embeddings': embeddings
         }
 
     def update_segments(self, segments, current_audio, duration):
@@ -1196,21 +1205,37 @@ class ServeClientFasterWhisper(ServeClientBase):
                 sample_start = int(sample_start)
                 sample_end = int(sample_end)
                 audio_chunk = current_audio[sample_start:sample_end]
-                speaker_id = self.classify_audio_segment(audio_chunk,sample_rate)
-                print("speaker id added!:",speaker_id)
+                speaker_id, embeddings = self.classify_audio_segment(audio_chunk,sample_rate)
 
-                self.transcript.append(self.format_segment(start, end, text_, completed=True, speaker=speaker_id))
+                self.transcript.append(self.format_segment(
+                    start, 
+                    end, 
+                    text_, 
+                    True, 
+                    speaker_id,
+                    embeddings
+                    ))
+
                 offset = min(duration, s.end)
 
         # only process the last segment if it satisfies the no_speech_thresh
         if segments[-1].no_speech_prob <= self.no_speech_thresh:
             self.last_text_out += segments[-1].text
+
+            # sample_start = max(0, min(segments[-1].start * sample_rate, len(current_audio)))
+            # sample_end = max(0, min(segments[-1].end * sample_rate, len(current_audio)))
+            # sample_start = int(sample_start)
+            # sample_end = int(sample_end)
+            # audio_chunk = current_audio[sample_start:sample_end]
+            # speaker_id, embeddings = self.classify_audio_segment(audio_chunk,sample_rate)
+
             with self.lock:
                 last_segment = self.format_segment(
                     self.timestamp_offset + segments[-1].start,
                     self.timestamp_offset + min(duration, segments[-1].end),
                     self.last_text_out,
                     False,
+                    None,
                     None
                 )
 
@@ -1232,7 +1257,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 sample_start = int(sample_start)
                 sample_end = int(sample_end)
                 audio_chunk = current_audio[sample_start:sample_end]
-                speaker_id = self.classify_audio_segment(audio_chunk,sample_rate)
+                speaker_id, embeddings = self.classify_audio_segment(audio_chunk,sample_rate)
 
                 with self.lock:
                     self.transcript.append(self.format_segment(
@@ -1240,7 +1265,8 @@ class ServeClientFasterWhisper(ServeClientBase):
                         self.timestamp_offset + duration,
                         self.last_text_out,
                         True,
-                        speaker_id
+                        speaker_id,
+                        embeddings
                     ))
             self.last_text_out = ''
             offset = duration
@@ -1256,18 +1282,50 @@ class ServeClientFasterWhisper(ServeClientBase):
 
         return last_segment
 
-    def classify_audio_segment(self, audio_chunk_np, sample_rate, fileName="./embeddings/embedding_latest.txt"):
-        waveform = self.embeddings_generator.prepare_waveform(audio_chunk_np, sample_rate)
-        embedding = self.embeddings_generator.process_embedding(waveform, fileName)
-        # segmentations = self.embeddings_generator.getSegmentations1(waveform)
 
-        # embeddings = self.embeddings_generator.getEmbeddingsBySegmentation(waveform, segmentations)
-        # print("this the embedding:",embedding)
-        # print("length:",len(embedding))
+    def classify_audio_segment(self, audio_chunk_np, sample_rate):
+
+        waveform = self.embeddings_generator.prepare_waveform(audio_chunk_np, sample_rate)
+        new_embeddings = self.embeddings_generator.get_embeddings(waveform)   #generate latest embedding
+
+        all_embeddings = self.getAllPreviousEmbeddings()  #get all embeddings
+        all_embeddings.extend(new_embeddings)
+
+        classifications, probabilities = self.embeddings_clusterer.cluster_embeddings(all_embeddings)   #cluster the embeddings!
+        if len(classifications) == 0:
+            return -1
+
+        print("Number New embeddings:",len(new_embeddings))
+
+        print("Number of classifications made:",len(classifications))
+        # print(classifications)
+        index = 0
+        for i in range(len(self.transcript)):
+            num_embeddings = len(self.transcript[i]['embeddings'])
+            segment_classes = classifications[index : index + num_embeddings]
+            # print("Segmented classificatinos:",segment_classes)
+            segment_classes = [item for sublist in segment_classes for item in sublist]
+
+            speaker_id = self.aggregateClassifications(segment_classes)
+            
+            # Find most common classification in this segment
+            self.transcript[i]['speaker_id'] = int(speaker_id)
+
+            index += num_embeddings
+
+        latest_classifications = classifications[-len(new_embeddings):]
         
-        # self.embeddings_clusterer.add_embedding(embedding)
-        # speaker_id = self.embeddings_clusterer.get_last_speaker_id()
-        
-        speaker_id = self.embeddings_clusterer.add_and_classify_embedding(embedding)
-        
-        return speaker_id
+        latest_classifications = [item for sublist in latest_classifications for item in sublist]
+        print("latest classification(s)",latest_classifications)        
+        last_speaker_id = self.aggregateClassifications(latest_classifications)
+
+        return last_speaker_id, new_embeddings
+
+
+    def getAllPreviousEmbeddings(self):
+        return [embedding for segment in self.transcript for embedding in segment['embeddings']]
+
+
+    def aggregateClassifications(self, segment_classes):
+        most_common, _ = Counter(segment_classes).most_common(1)[0]
+        return most_common
