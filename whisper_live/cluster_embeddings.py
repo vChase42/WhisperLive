@@ -4,12 +4,6 @@ from pyannote.audio.pipelines.clustering import AgglomerativeClustering
 from pyannote.core import SlidingWindow  # ensure imported
 
 
-#requirements
-#add an embedding and then retrieve classification for that embedding
-
-#when reclustering, if old embeddings get reclassified, should they be updated in the logs?
-#when reclustering, if two 'distinct' clusters become close (e.g, they were 1 speaker all along), handle a merge?
-
 
 class SpeakerClustering:
     def __init__(self, min_cluster_size = 2, threshold=0.7, method="weighted"):

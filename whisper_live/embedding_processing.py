@@ -118,6 +118,10 @@ class AudioEmbeddingGenerator:
         return {"waveform": waveform_tensor, "sample_rate": target_sample_rate}
 
 
+#==========================
+#SAMPLE USAGE CODE IS BELOW
+#==========================
+
 def normalize(file_soft_map):
     # Normalize the soft probabilities so that each vector sums to 1.
     for fname in file_soft_map:
