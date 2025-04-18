@@ -3,6 +3,10 @@ import logging
 import threading
 import time
 import numpy as np
+from collections import Counter
+
+from cluster_embeddings import SpeakerClustering
+from embedding_processing import AudioEmbeddingGenerator
 
 
 class ServeClientBase(object):
@@ -35,6 +39,10 @@ class ServeClientBase(object):
 
         # threading
         self.lock = threading.Lock()
+
+        #diarization
+        self.embeddings_generator = AudioEmbeddingGenerator()
+        self.embeddings_clusterer = SpeakerClustering()
 
     def speech_to_text(self):
         """
@@ -88,7 +96,7 @@ class ServeClientBase(object):
     def handle_transcription_output(self):
         raise NotImplementedError
     
-    def format_segment(self, start, end, text, completed=False):
+    def format_segment(self, start, end, text, completed, speaker, embeddings):
         """
         Formats a transcription segment with precise start and end times alongside the transcribed text.
 
@@ -106,7 +114,9 @@ class ServeClientBase(object):
             'start': "{:.3f}".format(start),
             'end': "{:.3f}".format(end),
             'text': text,
-            'completed': completed
+            'completed': completed,
+            'speaker': int(speaker) if speaker != None else None,
+            'embeddings': embeddings
         }
 
     def add_frames(self, frame_np):
@@ -194,7 +204,14 @@ class ServeClientBase(object):
             segments = self.transcript.copy()
         if last_segment is not None:
             segments = segments + [last_segment]
-        return segments
+
+        #delete 'embeddings' field
+        cleaned_segments = []
+        for segment in segments:
+            segment_copy = segment.copy()
+            segment_copy.pop('embeddings',None)
+            cleaned_segments.append(segment_copy)
+        return cleaned_segments
 
     def get_audio_chunk_duration(self, input_bytes):
         """
@@ -289,7 +306,7 @@ class ServeClientBase(object):
     def get_segment_end(self, segment):
         return getattr(segment, "end", getattr(segment, "end_ts", 0))
 
-    def update_segments(self, segments, duration):
+    def update_segments(self, segments, duration, current_audio):
         """
         Processes the segments from Whisper and updates the transcript.
         Uses helper methods to account for differences between backends.
@@ -297,6 +314,7 @@ class ServeClientBase(object):
         Args:
             segments (list): List of segments returned by the transcriber.
             duration (float): Duration of the current audio chunk.
+            current_audio (np.array): The audio representing the segments
         
         Returns:
             dict or None: The last processed segment (if any).
@@ -304,6 +322,7 @@ class ServeClientBase(object):
         offset = None
         self.current_out = ''
         last_segment = None
+        sample_rate = 16000
 
         # Process complete segments only if there are more than one
         # and if the last segment's no_speech_prob is below the threshold.
@@ -318,7 +337,15 @@ class ServeClientBase(object):
                     continue
                 if self.get_segment_no_speech_prob(s) > self.no_speech_thresh:
                     continue
-                self.transcript.append(self.format_segment(start, end, text_, completed=True))
+
+                sample_start = max(0, min(s.start * sample_rate, len(current_audio)))
+                sample_end = max(0, min(s.end * sample_rate, len(current_audio)))
+                sample_start = int(sample_start)
+                sample_end = int(sample_end)
+                audio_chunk = current_audio[sample_start:sample_end]
+                speaker_id, embeddings = self.classify_audio_segment(audio_chunk,sample_rate)
+
+                self.transcript.append(self.format_segment(start, end, text_, True, speaker_id, embeddings))
                 offset = min(duration, self.get_segment_end(s))
 
         # Process the last segment if its no_speech_prob is acceptable.
@@ -329,7 +356,9 @@ class ServeClientBase(object):
                     self.timestamp_offset + self.get_segment_start(segments[-1]),
                     self.timestamp_offset + min(duration, self.get_segment_end(segments[-1])),
                     self.current_out,
-                    completed=False
+                    False,
+                    None,
+                    None
                 )
 
         # Handle repeated output logic.
@@ -350,12 +379,22 @@ class ServeClientBase(object):
         if self.same_output_count > self.same_output_threshold:
             if not self.text or self.text[-1].strip().lower() != self.current_out.strip().lower():
                 self.text.append(self.current_out)
+
+                sample_start = max(0, min(segments[-1].start * sample_rate, len(current_audio)))
+                sample_end = max(0, min(segments[-1].end * sample_rate, len(current_audio)))
+                sample_start = int(sample_start)
+                sample_end = int(sample_end)
+                audio_chunk = current_audio[sample_start:sample_end]
+                speaker_id, embeddings = self.classify_audio_segment(audio_chunk,sample_rate)
+
                 with self.lock:
                     self.transcript.append(self.format_segment(
                         self.timestamp_offset,
                         self.timestamp_offset + min(duration, self.end_time_for_same_output),
                         self.current_out,
-                        completed=True
+                        True,
+                        speaker_id,
+                        embeddings
                     ))
             self.current_out = ''
             offset = min(duration, self.end_time_for_same_output)
@@ -370,3 +409,51 @@ class ServeClientBase(object):
                 self.timestamp_offset += offset
 
         return last_segment
+
+
+    def classify_audio_segment(self, audio_chunk_np, sample_rate):
+
+        waveform = self.embeddings_generator.prepare_waveform(audio_chunk_np, sample_rate)
+        new_embeddings = self.embeddings_generator.get_embeddings(waveform)   #generate latest embedding
+
+        all_embeddings = self.getAllPreviousEmbeddings()  #get all embeddings
+        all_embeddings.extend(new_embeddings)
+
+        classifications, probabilities = self.embeddings_clusterer.cluster_embeddings(all_embeddings)   #cluster the embeddings!
+        if len(classifications) == 0:
+            return -1
+
+        print("Number New embeddings:",len(new_embeddings))
+
+        print("Number of classifications made:",len(classifications))
+        # print(classifications)
+        index = 0
+        for i in range(len(self.transcript)):
+            num_embeddings = len(self.transcript[i]['embeddings'])
+            segment_classes = classifications[index : index + num_embeddings]
+            # print("Segmented classificatinos:",segment_classes)
+            segment_classes = [item for sublist in segment_classes for item in sublist]
+
+            speaker_id = self.aggregateClassifications(segment_classes)
+            
+            # Find most common classification in this segment
+            self.transcript[i]['speaker_id'] = int(speaker_id)
+
+            index += num_embeddings
+
+        latest_classifications = classifications[-len(new_embeddings):]
+        
+        latest_classifications = [item for sublist in latest_classifications for item in sublist]
+        print("latest classification(s)",latest_classifications)        
+        last_speaker_id = self.aggregateClassifications(latest_classifications)
+
+        return last_speaker_id, new_embeddings
+
+
+    def getAllPreviousEmbeddings(self):
+        return [embedding for segment in self.transcript for embedding in segment['embeddings']]
+
+
+    def aggregateClassifications(self, segment_classes):
+        most_common, _ = Counter(segment_classes).most_common(1)[0]
+        return most_common

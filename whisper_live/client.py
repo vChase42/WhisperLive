@@ -33,6 +33,7 @@ class Client:
         log_transcription=True,
         max_clients=4,
         max_connection_time=600,
+        initial_prompt = "",
     ):
         """
         Initializes a Client instance for audio recording and streaming to a server.
@@ -69,6 +70,7 @@ class Client:
         self.log_transcription = log_transcription
         self.max_clients = max_clients
         self.max_connection_time = max_connection_time
+        self.initial_prompt = initial_prompt
 
         if translate:
             self.task = "translate"
@@ -131,7 +133,7 @@ class Client:
 
         if self.log_transcription:
             # Truncate to last 3 entries for brevity.
-            text = text[-3:]
+            # text = text[-3:]
             utils.clear_screen()
             utils.print_transcript(text)
 
@@ -212,6 +214,7 @@ class Client:
                     "use_vad": self.use_vad,
                     "max_clients": self.max_clients,
                     "max_connection_time": self.max_connection_time,
+                    "initial_prompt": self.initial_prompt
                 }
             )
         )
@@ -708,11 +711,12 @@ class TranscriptionClient(TranscriptionTeeClient):
         max_clients=4,
         max_connection_time=600,
         mute_audio_playback=False,
+        initial_prompt="",
     ):
         self.client = Client(
             host, port, lang, translate, model, srt_file_path=output_transcription_path,
             use_vad=use_vad, log_transcription=log_transcription, max_clients=max_clients,
-            max_connection_time=max_connection_time
+            max_connection_time=max_connection_time,initial_prompt=initial_prompt
         )
 
         if save_output_recording and not output_recording_filename.endswith(".wav"):
