@@ -26,7 +26,7 @@ else:
 
 
 class AudioEmbeddingGenerator:
-    def __init__(self, hf_key, debug=False):
+    def __init__(self, debug=False):
         """
         Initializes the audio embedding generator by loading the embedding model,
         segmentation model, and instantiating the VAD pipeline.
@@ -38,12 +38,18 @@ class AudioEmbeddingGenerator:
         debug : bool
             If True, prints status and timing information.
         """
+        load_dotenv()
+        HF_KEY = os.getenv("HF_KEY")
+        if HF_KEY is None:
+            print("Error: Please set the HF_KEY environment variable with your Hugging Face token.")
+            sys.exit(1)
+
         self.debug = debug
 
         if self.debug:
             print("Loading embedding model...")
         self.embed_model = Model.from_pretrained("pyannote/wespeaker-voxceleb-resnet34-LM",
-                                                 use_auth_token=hf_key)
+                                                 use_auth_token=HF_KEY)
         self.inference_obj = Inference(self.embed_model, window="whole")
         
         if self.debug:

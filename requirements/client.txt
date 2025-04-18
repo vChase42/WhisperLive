@@ -1,4 +1,5 @@
 PyAudio
-av
+ffmpeg-python
 scipy
 websocket-client
+gradio

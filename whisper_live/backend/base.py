@@ -5,8 +5,8 @@ import time
 import numpy as np
 from collections import Counter
 
-from cluster_embeddings import SpeakerClustering
-from embedding_processing import AudioEmbeddingGenerator
+from whisper_live.backend.cluster_embeddings import SpeakerClustering
+from whisper_live.backend.embedding_processing import AudioEmbeddingGenerator
 
 
 class ServeClientBase(object):
