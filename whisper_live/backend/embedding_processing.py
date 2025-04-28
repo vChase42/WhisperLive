@@ -11,12 +11,12 @@ from pyannote.audio.pipelines import VoiceActivityDetection
 from pyannote.core import Segment, SlidingWindowFeature
 from pyannote.audio.pipelines.clustering import AgglomerativeClustering
 from dotenv import load_dotenv
+
 load_dotenv()
 HF_KEY = os.getenv("HF_KEY")
 if HF_KEY is None:
     print("Error: Please set the HF_KEY environment variable with your Hugging Face token.")
     sys.exit(1)
-
 if torch.cuda.is_available():
     print("CUDA IS AVAILABLE!!! GPU!!!")
 else:
@@ -55,7 +55,7 @@ class AudioEmbeddingGenerator:
         if self.debug:
             print("Loading segmentation model...")
         self.segmentation_model = Model.from_pretrained("pyannote/segmentation-3.0",
-                                                        use_auth_token=hf_key)
+                                                        use_auth_token=HF_KEY)
         # Hyper-parameters for VAD segmentation
         self.hyper_parameters = {"min_duration_on": 0.0, "min_duration_off": 0.0}
         

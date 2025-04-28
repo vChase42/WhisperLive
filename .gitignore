@@ -1,2 +1,6 @@
 .env
 __pycache__/
+chunks/
+transcripts/
+output.srt
+client_venv/

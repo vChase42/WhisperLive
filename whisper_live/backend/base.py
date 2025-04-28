@@ -84,7 +84,7 @@ class ServeClientBase(object):
                     self.timestamp_offset += duration
                     time.sleep(0.25)    # wait for voice activity, result is None when no voice activity
                     continue
-                self.handle_transcription_output(result, duration)
+                self.handle_transcription_output(result, duration,input_sample)
 
             except Exception as e:
                 logging.error(f"[ERROR]: Failed to transcribe audio chunk: {e}")
@@ -412,46 +412,49 @@ class ServeClientBase(object):
 
 
     def classify_audio_segment(self, audio_chunk_np, sample_rate):
+        try:
+            waveform = self.embeddings_generator.prepare_waveform(audio_chunk_np, sample_rate)
+            new_embeddings = self.embeddings_generator.get_embeddings(waveform)   #generate latest embedding
 
-        waveform = self.embeddings_generator.prepare_waveform(audio_chunk_np, sample_rate)
-        new_embeddings = self.embeddings_generator.get_embeddings(waveform)   #generate latest embedding
+            all_embeddings = self.getAllPreviousEmbeddings()  #get all embeddings
+            all_embeddings.extend(new_embeddings)
 
-        all_embeddings = self.getAllPreviousEmbeddings()  #get all embeddings
-        all_embeddings.extend(new_embeddings)
+            classifications, probabilities = self.embeddings_clusterer.cluster_embeddings(all_embeddings)   #cluster the embeddings!
+            if len(classifications) == 0:
+                return None, None
+                
 
-        classifications, probabilities = self.embeddings_clusterer.cluster_embeddings(all_embeddings)   #cluster the embeddings!
-        if len(classifications) == 0:
-            return -1
+            print("Number New embeddings:",len(new_embeddings))
 
-        print("Number New embeddings:",len(new_embeddings))
+            print("Number of classifications made:",len(classifications))
+            # print(classifications)
+            index = 0
+            for i in range(len(self.transcript)):
+                num_embeddings = len(self.transcript[i]['embeddings'])
+                segment_classes = classifications[index : index + num_embeddings]
+                # print("Segmented classificatinos:",segment_classes)
+                segment_classes = [item for sublist in segment_classes for item in sublist]
 
-        print("Number of classifications made:",len(classifications))
-        # print(classifications)
-        index = 0
-        for i in range(len(self.transcript)):
-            num_embeddings = len(self.transcript[i]['embeddings'])
-            segment_classes = classifications[index : index + num_embeddings]
-            # print("Segmented classificatinos:",segment_classes)
-            segment_classes = [item for sublist in segment_classes for item in sublist]
+                speaker_id = self.aggregateClassifications(segment_classes)
+                
+                # Find most common classification in this segment
+                self.transcript[i]['speaker_id'] = int(speaker_id)
 
-            speaker_id = self.aggregateClassifications(segment_classes)
+                index += num_embeddings
+
+            latest_classifications = classifications[-len(new_embeddings):]
             
-            # Find most common classification in this segment
-            self.transcript[i]['speaker_id'] = int(speaker_id)
-
-            index += num_embeddings
-
-        latest_classifications = classifications[-len(new_embeddings):]
-        
-        latest_classifications = [item for sublist in latest_classifications for item in sublist]
-        print("latest classification(s)",latest_classifications)        
-        last_speaker_id = self.aggregateClassifications(latest_classifications)
-
+            latest_classifications = [item for sublist in latest_classifications for item in sublist]
+            print("latest classification(s)",latest_classifications)        
+            last_speaker_id = self.aggregateClassifications(latest_classifications)
+        except Exception as e:
+            logging.error("Failed to classify segment:",e)
+            return None, None
         return last_speaker_id, new_embeddings
 
 
     def getAllPreviousEmbeddings(self):
-        return [embedding for segment in self.transcript for embedding in segment['embeddings']]
+        return [embedding for segment in self.transcript for embedding in segment['embeddings'] if embedding is not None]
 
 
     def aggregateClassifications(self, segment_classes):

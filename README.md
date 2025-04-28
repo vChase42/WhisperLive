@@ -1,15 +1,23 @@
-# WhisperLive
+# B2B Transcription
 
 <h2 align="center">
-  <a href="https://www.youtube.com/watch?v=0PHWCApIcCI"><img
-src="https://img.youtube.com/vi/0PHWCApIcCI/0.jpg" style="background-color:rgba(0,0,0,0);" height=300 alt="WhisperLive"></a>
+  <a href="https://www.youtube.com/watch?v=0PHWCApIcCI"><img src="./img/main_page.png" height="300" alt="WhisperLive"></a>
   <br><br>A nearly-live implementation of OpenAI's Whisper.
 <br><br>
 </h2>
+This software includes components provided by NVIDIA Corporation.
+
+
 
 This project is a real-time transcription application that uses the OpenAI Whisper model
 to convert speech input into text output. It can be used to transcribe both live audio
 input from microphone and pre-recorded audio files.
+
+## Requirements
+Docker
+Python
+Up to date Nvidia driver
+
 
 - [Installation](#installation)
 - [Getting Started](#getting-started)
@@ -22,6 +30,12 @@ input from microphone and pre-recorded audio files.
 - [Citations](#citations)
 
 ## Installation
+
+- Check for correct CUDA version & NVIDIA driver
+- Define the .env correctly
+- Get the HF_KEY from your huggingface account and go to the following pages and accept their terms and conditions
+
+
 - Install PyAudio
 ```bash
  bash scripts/setup.sh

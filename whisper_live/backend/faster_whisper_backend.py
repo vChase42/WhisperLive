@@ -202,7 +202,7 @@ class ServeClientFasterWhisper(ServeClientBase):
                 self.text.append('')
         return segments
 
-    def handle_transcription_output(self, result, duration):
+    def handle_transcription_output(self, result, duration, current_audio):
         """
         Handle the transcription output, updating the transcript and sending data to the client.
 
@@ -213,7 +213,7 @@ class ServeClientFasterWhisper(ServeClientBase):
         segments = []
         if len(result):
             self.t_start = None
-            last_segment = self.update_segments(result, duration)
+            last_segment = self.update_segments(result, duration, current_audio)
             segments = self.prepare_segments(last_segment)
         else:
             # show previous output if there is pause i.e. no output from whisper
